@@ -1,0 +1,48 @@
+name: Scheduled Security Scan
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'  # Every Monday at 06:00 UTC
+  workflow_dispatch:       # Manual trigger available from GitHub Actions UI
+
+jobs:
+  dependency-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
+        with: { python-version: "3.12" }
+      - name: Install pip-audit
+        run: |
+          pip install --upgrade pip
+          pip install pip-audit==2.10.1
+      - name: Run pip-audit
+        id: pip_audit
+        continue-on-error: true
+        run: pip-audit -r requirements.txt
+      - name: Run Trivy filesystem scan (Python deps, misconfig, secrets)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          scan-type: fs
+          scanners: vuln,misconfig,secret
+          severity: HIGH,CRITICAL
+          format: sarif
+          output: trivy.sarif
+          exit-code: '1'
+          limit-severities-for-sarif: true
+      - name: Upload Trivy SARIF to Security tab
+        if: always()
+        continue-on-error: true  # SARIF upload requires GitHub Advanced Security
+        uses: github/codeql-action/upload-sarif@17a820bf2e43b47be2c72b39cc905417bc1ab6d0  # v3.28.6
+        with:
+          sarif_file: trivy.sarif
+      - name: Fail if pip-audit found vulnerabilities
+        if: always() && steps.pip_audit.outcome == 'failure'
+        run: |
+          echo "pip-audit detected vulnerabilities — see results above"
+          exit 1

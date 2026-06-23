@@ -1,0 +1,4 @@
+chromosome	start	end	tumorCopyNumber	tumorBAF
+chr1	1	200000	2.1	0.52
+chr2	1	100000	3.5	0.55
+chr2	100001	200000	1.0	0.50

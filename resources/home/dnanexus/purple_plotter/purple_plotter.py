@@ -272,3 +272,302 @@ def genemetrics_to_bedgraph(gm_df: pd.DataFrame) -> str:
             if math.isfinite(log2_val):
                 lines.append(f"{chrom}\t{int(row['start'])}\t{int(row['end'])}\t{log2_val:.4f}")
     return "\n".join(lines)
+
+
+# ── HTML template ──────────────────────────────────────────────────────────────
+
+HTML_BARS = """\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>IGV bars — {sample}</title>
+<style>
+* {{ box-sizing: border-box; margin: 0; padding: 0; }}
+body {{ font-family: -apple-system, Arial, sans-serif; background: #f0f2f5; }}
+#hdr {{ background: #1a2638; color: #e8edf3; padding: 10px 18px;
+        display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }}
+#hdr .ttl  {{ font-size: 15px; font-weight: 600; }}
+#hdr .meta {{ font-size: 12px; color: #9aafc4; }}
+#igv-div {{ background: white; }}
+#leg {{ background: #fff; border-top: 1px solid #dde; padding: 7px 18px;
+        display: flex; flex-wrap: wrap; gap: 18px; align-items: center;
+        font-size: 11.5px; color: #444; }}
+.li {{ display:flex; align-items:center; gap:5px; }}
+.sw {{ width:12px; height:12px; border-radius:2px; flex-shrink:0; }}
+.note {{ color:#888; font-style:italic; }}
+</style>
+</head>
+<body>
+
+<div id="hdr">
+  <span class="ttl">CNV viewer (bars) — {sample}</span>
+  <span class="meta">
+    Purity {purity} &nbsp;·&nbsp; Ploidy {ploidy} &nbsp;·&nbsp; {status}
+    &nbsp;·&nbsp; MSI {msi_score} &nbsp;·&nbsp; {msi_status}
+  </span>
+</div>
+<div id="igv-div"></div>
+<div id="leg">
+  <strong>Tracks:</strong>
+  <div class="li"><div class="sw" style="background:rgba(80,80,80,0.5)"></div>Coverage ratio (PURPLE)</div>
+  <div class="li"><div class="sw" style="background:#08306b"></div>CN amp (&gt;1 log&#x2082;)</div>
+  <div class="li"><div class="sw" style="background:#93c4e0"></div>CN gain (0.3&#x2013;1.0 log&#x2082;)</div>
+  <div class="li"><div class="sw" style="background:#fca5a5"></div>CN loss (&#x2212;1.0 to &#x2212;0.3 log&#x2082;)</div>
+  <div class="li"><div class="sw" style="background:#8b0000"></div>CN homdel (&lt;&#x2212;1.0 log&#x2082;)</div>
+  <div class="li"><div class="sw" style="background:rgba(80,80,80,0.5)"></div>BAF (AMBER scatter)</div>
+  <div class="li"><div class="sw" style="background:#4d4d4d"></div>Fitted BAF (coloured by CN state)</div>
+  <div class="li"><div class="sw" style="background:#08306b"></div>Seg gain</div>
+  <div class="li"><div class="sw" style="background:#8b0000"></div>Seg loss</div>
+  <div class="li"><div class="sw" style="background:#756bb1"></div>CNVkit log&#x2082; ratio (per target)</div>
+  <div class="li"><div class="sw" style="background:#08306b"></div>CNVkit seg gain</div>
+  <div class="li"><div class="sw" style="background:#8b0000"></div>CNVkit seg loss</div>
+  <div class="li"><div class="sw" style="background:#08306b"></div><div class="sw" style="background:#8b0000"></div>CNVkit genemetrics (gain / loss)</div>
+  <span class="note">
+    Coverage y: &#x2212;2&#x2013;+2 &nbsp;&#xb7;&nbsp;
+    Bars y: log&#x2082;(CN/ploidy); 0&#xa0;=&#xa0;diploid &nbsp;&#xb7;&nbsp;
+    CNVkit y: log&#x2082; ratio; 0&#xa0;=&#xa0;diploid &nbsp;&#xb7;&nbsp;
+    BAF y: 0&#x2013;1
+  </span>
+</div>
+
+<script src="https://igv.org/web/release/3.8.3/dist/igv.min.js"></script>
+<script>
+const covLog2Bg          = `{cov_log2_bg}`;
+const barAmpBg           = `{bar_amp_bg}`;
+const barGainBg          = `{bar_gain_bg}`;
+const barLossBg          = `{bar_loss_bg}`;
+const barHodelBg         = `{bar_hodel_bg}`;
+const bafBg              = `{baf_bg}`;
+const bafMirBg           = `{baf_mir_bg}`;
+const bafBarAmpTopBg     = `{baf_bar_amp_top_bg}`;
+const bafBarAmpBotBg     = `{baf_bar_amp_bot_bg}`;
+const bafBarGainTopBg    = `{baf_bar_gain_top_bg}`;
+const bafBarGainBotBg    = `{baf_bar_gain_bot_bg}`;
+const bafBarLossTopBg    = `{baf_bar_loss_top_bg}`;
+const bafBarLossBotBg    = `{baf_bar_loss_bot_bg}`;
+const bafBarHodelTopBg   = `{baf_bar_hodel_top_bg}`;
+const bafBarHodelBotBg   = `{baf_bar_hodel_bot_bg}`;
+const cnvkitCnrBg        = `{cnvkit_cnr_bg}`;
+const cnvkitSnsBg        = `{cnvkit_sns_bg}`;
+const cnvkitGenemetricsBg = `{cnvkit_gm_bg}`;
+const segData            = `{seg_data}`;
+
+function blob(txt) {{
+  return URL.createObjectURL(new Blob([txt], {{ type: "text/plain" }}));
+}}
+
+igv.createBrowser(document.getElementById("igv-div"), {{
+  genome:    "hg38",
+  locus:     "{locus}",
+  showRuler: true,
+  showCursorTrackingGuide: true,
+  tracks: [
+
+    // ── 1. Coverage scatter + CN log₂ bars ──────────────────────────────────
+    {{
+      type: "merged", name: "Coverage + CN (log\u2082)", height: 200,
+      min: -2, max: 2, autoscale: false, visibilityWindow: -1, alpha: 0.6,
+      tracks: [
+        {{ type: "wig", format: "bedgraph", url: blob(barAmpBg),
+           graphType: "bar", color: "#08306b", altColor: "#08306b",
+           min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
+        {{ type: "wig", format: "bedgraph", url: blob(barGainBg),
+           graphType: "bar", color: "#93c4e0", altColor: "#93c4e0",
+           min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
+        {{ type: "wig", format: "bedgraph", url: blob(barLossBg),
+           graphType: "bar", color: "#fca5a5", altColor: "#fca5a5",
+           min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
+        {{ type: "wig", format: "bedgraph", url: blob(barHodelBg),
+           graphType: "bar", color: "#8b0000", altColor: "#8b0000",
+           min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
+        {{ type: "wig", format: "bedgraph", url: blob(covLog2Bg),
+           graphType: "points", color: "rgba(80,80,80,0.5)", pointSize: 6,
+           min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
+      ],
+    }},
+
+    // ── 2. PURPLE CNV segments (log₂ SEG) ───────────────────────────────────
+    {{
+      name: " ", type: "seg", format: "seg",
+      url: blob(segData), height: 10,
+      posColorScale: {{ low: 0.1, high: 1.5, lowColor: 'rgb(255,255,255)', highColor: 'rgb(8,48,107)' }},
+      negColorScale: {{ low: -1.5, high: -0.1, lowColor: 'rgb(139,0,0)', highColor: 'rgb(255,255,255)' }},
+    }},
+
+    // ── 3. BAF scatter + fitted BAF bars ────────────────────────────────────
+    {{
+      type: "merged", name: "BAF", height: 100,
+      min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, alpha: 0.6,
+      tracks: [
+        {{ type: "wig", format: "bedgraph", url: blob(bafBarAmpTopBg),   graphType: "bar", color: "#08306b", altColor: "#08306b", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
+        {{ type: "wig", format: "bedgraph", url: blob(bafBarGainTopBg),  graphType: "bar", color: "#93c4e0", altColor: "#93c4e0", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
+        {{ type: "wig", format: "bedgraph", url: blob(bafBarLossTopBg),  graphType: "bar", color: "#fca5a5", altColor: "#fca5a5", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
+        {{ type: "wig", format: "bedgraph", url: blob(bafBarHodelTopBg), graphType: "bar", color: "#8b0000", altColor: "#8b0000", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
+        {{ type: "wig", format: "bedgraph", url: blob(bafBarAmpBotBg),   graphType: "bar", color: "#08306b", altColor: "#08306b", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
+        {{ type: "wig", format: "bedgraph", url: blob(bafBarGainBotBg),  graphType: "bar", color: "#93c4e0", altColor: "#93c4e0", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
+        {{ type: "wig", format: "bedgraph", url: blob(bafBarLossBotBg),  graphType: "bar", color: "#fca5a5", altColor: "#fca5a5", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
+        {{ type: "wig", format: "bedgraph", url: blob(bafBarHodelBotBg), graphType: "bar", color: "#8b0000", altColor: "#8b0000", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
+        {{ type: "wig", format: "bedgraph", url: blob(bafBg),            graphType: "points", color: "rgba(80,80,80,0.5)", pointSize: 6, min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
+        {{ type: "wig", format: "bedgraph", url: blob(bafMirBg),         graphType: "points", color: "rgba(80,80,80,0.5)", pointSize: 6, min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
+      ],
+    }},
+
+    // ── 4. PURPLE CNV segments (log₂ SEG) ───────────────────────────────────
+    {{
+      name: " ", type: "seg", format: "seg",
+      url: blob(segData), height: 10,
+      posColorScale: {{ low: 0.1, high: 1.5, lowColor: 'rgb(255,255,255)', highColor: 'rgb(8,48,107)' }},
+      negColorScale: {{ low: -1.5, high: -0.1, lowColor: 'rgb(139,0,0)', highColor: 'rgb(255,255,255)' }},
+    }},
+
+    // ── 5. CNVkit log₂ scatter (.cnr per-target ratios) ─────────────────────
+    {{
+      type: "merged", name: "CNVkit log\u2082", height: 150,
+      min: -2, max: 2, autoscale: false, visibilityWindow: -1,
+      tracks: [
+        {{ type: "wig", format: "bedgraph", url: blob(cnvkitCnrBg), graphType: "points", color: "#756bb1", pointSize: 10, min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
+      ],
+    }},
+
+    // ── 6. CNVkit called segments (.call.cns) ────────────────────────────────
+    {{
+      name: "CNVkit segments", type: "seg", format: "seg",
+      url: blob(cnvkitSnsBg), height: 50,
+      posColorScale: {{ low: 0.1, high: 1.5, lowColor: 'rgb(255,255,255)', highColor: 'rgb(8,48,107)' }},
+      negColorScale: {{ low: -1.5, high: -0.1, lowColor: 'rgb(139,0,0)', highColor: 'rgb(255,255,255)' }},
+    }},
+
+    // ── 7. CNVkit gene metrics (.genemetrics.csv) ────────────────────────────
+    {{
+      type: "merged", name: "CNVkit genemetrics", height: 80,
+      min: -2, max: 2, autoscale: false, visibilityWindow: -1,
+      tracks: [
+        {{ type: "wig", format: "bedgraph", url: blob(cnvkitGenemetricsBg), graphType: "bar", color: "#08306b", altColor: "#8b0000", min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
+      ],
+    }},
+
+  ],
+}});
+</script>
+</body>
+</html>
+"""
+
+
+# ── Rendering ──────────────────────────────────────────────────────────────────
+
+def render_html(inputs: "PlotInputs") -> str:
+    """Fill HTML_BARS template from PlotInputs. Empty strings produce empty blob URLs."""
+    ploidy = inputs.qc.ploidy
+
+    # PURPLE tracks (empty strings if purple is None)
+    if inputs.purple is not None:
+        cov_log2_bg = coverage_log2_bedgraph(inputs.purple.cn_df)
+        bar_bgs     = cn_bars_by_state(inputs.purple.seg_df, ploidy)
+        baf_bg      = baf_bedgraph(inputs.purple.baf_df)
+        baf_mir_bg  = baf_bedgraph_mirror(inputs.purple.baf_df)
+        baf_bar_bgs = baf_seg_bars_by_state(inputs.purple.seg_df, ploidy)
+        seg_data    = to_seg(inputs.purple.seg_df, inputs.sample_id, ploidy)
+    else:
+        cov_log2_bg = ""
+        bar_bgs     = {k: "" for k, *_ in CN_STATES}
+        baf_bg = baf_mir_bg = seg_data = ""
+        baf_bar_bgs = {f"{k}_{arm}": "" for k, *_ in CN_STATES for arm in ("top", "bot")}
+
+    # CNVkit tracks (empty strings if dataframe is None)
+    cnvkit_cnr_bg = cnr_to_bedgraph(inputs.cnvkit.cnr_df) if inputs.cnvkit.cnr_df is not None else ""
+    cnvkit_sns_bg = cns_to_seg(inputs.cnvkit.cns_df, inputs.sample_id, ploidy) if inputs.cnvkit.cns_df is not None else ""
+    cnvkit_gm_bg  = genemetrics_to_bedgraph(inputs.cnvkit.gm_df) if inputs.cnvkit.gm_df is not None else ""
+
+    # Header values — show "?" when QC data is absent (status == "UNKNOWN")
+    purity_str = "?" if inputs.qc.status == "UNKNOWN" else f"{inputs.qc.purity:.0%}"
+    ploidy_str = "?" if inputs.qc.status == "UNKNOWN" else f"{inputs.qc.ploidy:.2f}"
+
+    return HTML_BARS.format(
+        sample               = inputs.sample_id,
+        purity               = purity_str,
+        ploidy               = ploidy_str,
+        status               = inputs.qc.status,
+        msi_score            = inputs.msi.score_str,
+        msi_status           = inputs.msi.status_str,
+        locus                = inputs.locus,
+        cov_log2_bg          = cov_log2_bg,
+        bar_amp_bg           = bar_bgs["amp"],
+        bar_gain_bg          = bar_bgs["gain"],
+        bar_loss_bg          = bar_bgs["loss"],
+        bar_hodel_bg         = bar_bgs["hodel"],
+        baf_bg               = baf_bg,
+        baf_mir_bg           = baf_mir_bg,
+        baf_bar_amp_top_bg   = baf_bar_bgs["amp_top"],
+        baf_bar_amp_bot_bg   = baf_bar_bgs["amp_bot"],
+        baf_bar_gain_top_bg  = baf_bar_bgs["gain_top"],
+        baf_bar_gain_bot_bg  = baf_bar_bgs["gain_bot"],
+        baf_bar_loss_top_bg  = baf_bar_bgs["loss_top"],
+        baf_bar_loss_bot_bg  = baf_bar_bgs["loss_bot"],
+        baf_bar_hodel_top_bg = baf_bar_bgs["hodel_top"],
+        baf_bar_hodel_bot_bg = baf_bar_bgs["hodel_bot"],
+        seg_data             = seg_data,
+        cnvkit_cnr_bg        = cnvkit_cnr_bg,
+        cnvkit_sns_bg        = cnvkit_sns_bg,
+        cnvkit_gm_bg         = cnvkit_gm_bg,
+    )
+
+
+def write_html(inputs: "PlotInputs", output_dir: Path) -> Path:
+    """Render HTML and write to {output_dir}/{sample_id}.igv.bars.html."""
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    out = output_dir / f"{inputs.sample_id}.igv.bars.html"
+    out.write_text(render_html(inputs))
+    return out
+
+
+# ── CLI ────────────────────────────────────────────────────────────────────────
+
+def main() -> None:
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    ap.add_argument("--sample",             required=True,  help="Sample ID")
+    ap.add_argument("--purple_tar",         default=None,   help="PURPLE tar.gz archive")
+    ap.add_argument("--qc_report",          default=None,   help="QC report TSV")
+    ap.add_argument("--cnvkit_cnr",         default=None,   help="CNVkit CNR file")
+    ap.add_argument("--cnvkit_call_cns",    default=None,   help="CNVkit called segments")
+    ap.add_argument("--cnvkit_genemetrics", default=None,   help="CNVkit genemetrics CSV")
+    ap.add_argument("--msi_report",         default=None,   help="MSI report TSV")
+    ap.add_argument("--locus",              default="all",  help="Initial IGV locus")
+    ap.add_argument("--output_dir",         default=".",    help="Output directory")
+    args = ap.parse_args()
+
+    if args.purple_tar is None and args.cnvkit_cnr is None:
+        ap.error(
+            "At least one of --purple_tar or --cnvkit_cnr must be supplied. "
+            "Provide PURPLE outputs, CNVkit outputs, or both."
+        )
+
+    purple = load_purple_data(Path(args.purple_tar), args.sample) if args.purple_tar else None
+    qc     = load_qc_data(Path(args.qc_report) if args.qc_report else None)
+    msi    = load_msi_data(Path(args.msi_report) if args.msi_report else None)
+    cnvkit = load_cnvkit_data(
+        Path(args.cnvkit_cnr)         if args.cnvkit_cnr         else None,
+        Path(args.cnvkit_call_cns)    if args.cnvkit_call_cns    else None,
+        Path(args.cnvkit_genemetrics) if args.cnvkit_genemetrics else None,
+    )
+
+    inputs = PlotInputs(
+        sample_id = args.sample,
+        locus     = args.locus,
+        purple    = purple,
+        qc        = qc,
+        msi       = msi,
+        cnvkit    = cnvkit,
+    )
+
+    out = write_html(inputs, Path(args.output_dir))
+    print(f"Written: {out}  ({out.stat().st_size // 1024} KB)")
+
+
+if __name__ == "__main__":
+    main()

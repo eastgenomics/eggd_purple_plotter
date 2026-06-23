@@ -1,6 +1,7 @@
 """eggd_purple_plotter — Generate a self-contained IGV bars HTML from PURPLE/CNVkit outputs."""
 import argparse
 import gzip
+import html as _html
 import io
 import math
 import tarfile
@@ -34,6 +35,7 @@ class QCData:
     purity: float = 0.5
     ploidy: float = 2.0
     status: str   = "UNKNOWN"
+    loaded: bool  = False  # True only when a QC file was successfully read
 
 @dataclass
 class MSIData:
@@ -93,10 +95,12 @@ def load_qc_data(qc_report: "Path | None") -> QCData:
     if qc_report is None or not Path(qc_report).exists():
         return QCData()
     row = pd.read_csv(qc_report, sep="\t").iloc[0]
+    val = row.get("status", pd.NA)
     return QCData(
         purity = float(row["purity"]),
         ploidy = float(row["ploidy"]),
-        status = str(row.get("status", "UNKNOWN")),
+        status = "UNKNOWN" if pd.isna(val) else str(val),
+        loaded = True,
     )
 
 
@@ -461,6 +465,9 @@ def render_html(inputs: "PlotInputs") -> str:
     """Fill HTML_BARS template from PlotInputs. Empty strings produce empty blob URLs."""
     ploidy = inputs.qc.ploidy
 
+    # Sanitise sample_id for backtick JS literal context (used in seg/CNVkit SEG strings)
+    sample_js = inputs.sample_id.replace("`", "\\`").replace("${" , "\\${")
+
     # PURPLE tracks (empty strings if purple is None)
     if inputs.purple is not None:
         cov_log2_bg = coverage_log2_bedgraph(inputs.purple.cn_df)
@@ -468,7 +475,7 @@ def render_html(inputs: "PlotInputs") -> str:
         baf_bg      = baf_bedgraph(inputs.purple.baf_df)
         baf_mir_bg  = baf_bedgraph_mirror(inputs.purple.baf_df)
         baf_bar_bgs = baf_seg_bars_by_state(inputs.purple.seg_df, ploidy)
-        seg_data    = to_seg(inputs.purple.seg_df, inputs.sample_id, ploidy)
+        seg_data    = to_seg(inputs.purple.seg_df, sample_js, ploidy)
     else:
         cov_log2_bg = ""
         bar_bgs     = {k: "" for k, *_ in CN_STATES}
@@ -477,21 +484,25 @@ def render_html(inputs: "PlotInputs") -> str:
 
     # CNVkit tracks (empty strings if dataframe is None)
     cnvkit_cnr_bg = cnr_to_bedgraph(inputs.cnvkit.cnr_df) if inputs.cnvkit.cnr_df is not None else ""
-    cnvkit_sns_bg = cns_to_seg(inputs.cnvkit.cns_df, inputs.sample_id, ploidy) if inputs.cnvkit.cns_df is not None else ""
+    cnvkit_sns_bg = cns_to_seg(inputs.cnvkit.cns_df, sample_js, ploidy) if inputs.cnvkit.cns_df is not None else ""
     cnvkit_gm_bg  = genemetrics_to_bedgraph(inputs.cnvkit.gm_df) if inputs.cnvkit.gm_df is not None else ""
 
-    # Header values — show "?" when QC data is absent (status == "UNKNOWN")
-    purity_str = "?" if inputs.qc.status == "UNKNOWN" else f"{inputs.qc.purity:.0%}"
-    ploidy_str = "?" if inputs.qc.status == "UNKNOWN" else f"{inputs.qc.ploidy:.2f}"
+    # Header values — show "?" when no QC file was loaded
+    purity_str = "?" if not inputs.qc.loaded else f"{inputs.qc.purity:.0%}"
+    ploidy_str = "?" if not inputs.qc.loaded else f"{inputs.qc.ploidy:.2f}"
+
+    # Sanitise values injected into HTML/JS contexts
+    sample_html  = _html.escape(inputs.sample_id)           # used in <title> and <span>
+    locus_js     = inputs.locus.replace("\\", "\\\\").replace('"', '\\"')  # inside JS string
 
     return HTML_BARS.format(
-        sample               = inputs.sample_id,
+        sample               = sample_html,
         purity               = purity_str,
         ploidy               = ploidy_str,
-        status               = inputs.qc.status,
-        msi_score            = inputs.msi.score_str,
-        msi_status           = inputs.msi.status_str,
-        locus                = inputs.locus,
+        status               = _html.escape(inputs.qc.status),
+        msi_score            = _html.escape(inputs.msi.score_str),
+        msi_status           = _html.escape(inputs.msi.status_str),
+        locus                = locus_js,
         cov_log2_bg          = cov_log2_bg,
         bar_amp_bg           = bar_bgs["amp"],
         bar_gain_bg          = bar_bgs["gain"],

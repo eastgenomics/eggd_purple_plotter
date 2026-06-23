@@ -45,6 +45,16 @@ def test_load_qc_data_missing_file():
     assert qc.status == "UNKNOWN"
 
 
+def test_load_qc_data_blank_status(tmp_path):
+    """A blank status cell must not produce 'nan', and purity/ploidy must still display."""
+    tsv = tmp_path / "blank_status.qc_report.tsv"
+    tsv.write_text("purity\tploidy\tstatus\n0.65\t2.10\t\n")
+    qc = load_qc_data(tsv)
+    assert qc.status == "UNKNOWN"
+    assert qc.loaded is True
+    assert qc.purity == pytest.approx(0.65)
+
+
 def test_load_msi_data():
     msi = load_msi_data(FIXTURES / "sample.msi.tsv")
     assert msi.score_str == "3.42%"

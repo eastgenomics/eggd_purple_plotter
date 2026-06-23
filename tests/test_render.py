@@ -39,12 +39,23 @@ def test_render_html_qc_defaults_shown():
 def test_render_html_qc_values_shown():
     inputs = PlotInputs(
         sample_id="S001",
-        qc=QCData(purity=0.79, ploidy=2.02, status="NORMAL"),
+        qc=QCData(purity=0.79, ploidy=2.02, status="NORMAL", loaded=True),
     )
     html = render_html(inputs)
     assert "79%" in html
     assert "2.02" in html
     assert "NORMAL" in html
+
+
+def test_render_html_qc_loaded_but_unknown_status():
+    """Purity/ploidy must display even when QC file has a blank/UNKNOWN status."""
+    inputs = PlotInputs(
+        sample_id="S001",
+        qc=QCData(purity=0.65, ploidy=2.10, status="UNKNOWN", loaded=True),
+    )
+    html = render_html(inputs)
+    assert "65%" in html
+    assert "2.10" in html
 
 
 def test_render_writes_file(tmp_path):

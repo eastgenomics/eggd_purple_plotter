@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>eggd_purple_plotter — Part 2: Key concepts</title>
+<style>
+  :root{
+    --ink:#0d1b2a;--ink-soft:#354656;--muted:#6b7c8d;
+    --line:#e0e7ef;--line-strong:#c5d0db;
+    --bg:#f7f9fb;--paper:#ffffff;
+    --accent:#005eb8;--accent-deep:#003d78;--accent-mid:#1a73c4;--accent-soft:#e3edf8;
+    --green:#1a6e47;--green-soft:#e0f0e8;
+    --amber:#b35c00;--amber-soft:#fdf0e0;
+    --red:#9b2335;--red-soft:#fce8ea;
+    --purple:#4b2d8e;--purple-soft:#ede8f8;
+    --shadow:0 1px 3px rgba(13,27,42,.05),0 4px 20px rgba(13,27,42,.08);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","Inter",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  a{color:var(--accent-mid);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .layout{display:grid;grid-template-columns:270px minmax(0,1fr);max-width:1320px;margin:0 auto}
+  @media(max-width:860px){.layout{grid-template-columns:1fr}.toc{display:none}}
+  main{padding:0 56px 96px;max-width:900px}
+  @media(max-width:860px){main{padding:0 24px 64px}}
+  h1{font-size:38px;line-height:1.1;letter-spacing:-.015em;font-weight:800;color:var(--ink);margin-bottom:14px;max-width:22ch}
+  h2{font-size:24px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:12px}
+  h2 .sec-num{font-size:12px;letter-spacing:.06em;text-transform:uppercase;background:var(--accent);color:#fff;padding:3px 9px;border-radius:999px;font-weight:700;white-space:nowrap}
+  h3{font-size:17px;font-weight:700;margin:28px 0 10px;color:var(--ink)}
+  h4{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:20px 0 8px;font-weight:600}
+  p{margin-bottom:13px;color:var(--ink-soft)}
+  strong{color:var(--ink)}
+  ul,ol{margin:0 0 14px;padding-left:22px}
+  li{margin:5px 0;color:var(--ink-soft)}
+  .toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:28px 24px;background:var(--paper);border-right:1px solid var(--line);font-size:13px}
+  .toc-brand{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-deep);margin-bottom:20px;line-height:1.4}
+  .toc-section{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:18px 0 6px}
+  .toc ul{list-style:none}
+  .toc ul li a{display:block;padding:5px 0 5px 16px;color:var(--ink-soft);border-left:2px solid transparent;transition:all .15s;font-size:12.5px;line-height:1.4}
+  .toc ul li a:hover{color:var(--accent);border-left-color:var(--accent);text-decoration:none;padding-left:20px}
+  .toc .meta{margin-top:22px;padding-top:18px;border-top:1px solid var(--line);font-size:11.5px;color:var(--muted);line-height:1.6}
+  .hero{padding:52px 0 36px;border-bottom:1px solid var(--line);margin-bottom:8px}
+  .hero .eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:12px}
+  .hero h1{font-size:38px;line-height:1.1;letter-spacing:-.015em;font-weight:800;color:var(--ink);margin-bottom:10px;max-width:22ch}
+  .hero .part-label{font-size:18px;font-weight:600;color:var(--accent-deep);margin-bottom:14px}
+  .hero .sub{font-size:17px;line-height:1.55;color:var(--ink-soft);max-width:64ch}
+  .hero .meta-row{display:flex;gap:24px;margin-top:20px;flex-wrap:wrap}
+  .hero .meta-item{font-size:12px;color:var(--muted)}
+  .hero .meta-item strong{color:var(--ink-soft)}
+  section{padding-top:52px}
+  section+section{border-top:1px solid var(--line)}
+  footer{padding:32px 56px;color:var(--muted);font-size:12px;border-top:1px solid var(--line);max-width:1320px;margin:0 auto;line-height:1.7}
+  .callout{border-radius:6px;padding:18px 22px;margin:18px 0;border:1px solid}
+  .callout.blue{border-color:#b3cce8;background:var(--accent-soft)}
+  .callout.green{border-color:#a8d4bb;background:var(--green-soft)}
+  .callout.amber{border-color:#e8c28a;background:var(--amber-soft)}
+  .callout .tag{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;margin-bottom:6px}
+  .callout.blue .tag{color:var(--accent-deep)}
+  .callout.green .tag{color:var(--green)}
+  .callout.amber .tag{color:var(--amber)}
+  .callout p:last-child{margin:0}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:22px 0}
+  @media(max-width:640px){.stats{grid-template-columns:repeat(2,1fr)}}
+  .stat{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:16px;border-top:3px solid var(--accent)}
+  .stat .n{font-size:26px;font-weight:800;color:var(--accent-deep);line-height:1.1;font-variant-numeric:tabular-nums}
+  .stat .l{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.4}
+  .stat .src{font-size:10.5px;color:var(--line-strong);margin-top:8px;font-style:italic}
+  .card-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin:18px 0}
+  @media(max-width:640px){.card-grid{grid-template-columns:1fr}}
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:18px;box-shadow:var(--shadow)}
+  .card-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .card-icon{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .card-name{font-weight:700;font-size:14.5px;color:var(--ink);line-height:1.2}
+  .card-sub{font-size:11.5px;color:var(--muted)}
+  .card p{font-size:13.5px;margin:0 0 10px}
+  .card p:last-child{margin:0}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.04em}
+  .pill.green{background:var(--green-soft);color:var(--green)}
+  .pill.amber{background:var(--amber-soft);color:var(--amber)}
+  .pill.blue{background:var(--accent-soft);color:var(--accent-deep)}
+  .pill.purple{background:var(--purple-soft);color:var(--purple)}
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px}
+  th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#f0f4f8;font-weight:600;font-size:12.5px;color:var(--ink);letter-spacing:.02em}
+  tr:hover td{background:#fafbfd}
+  figure{margin:24px 0}
+  .fig-wrap{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:20px;overflow:auto}
+  figcaption{font-size:12px;color:var(--muted);text-align:center;margin-top:8px;font-style:italic;line-height:1.5}
+  .ref{display:inline-block;background:#f0f4f8;border:1px solid var(--line);border-radius:4px;padding:1px 7px;font-size:11.5px;color:var(--ink-soft);font-family:ui-monospace,Menlo,Consolas,monospace;white-space:nowrap}
+
+  /* Code-mode additional CSS */
+  code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;background:#f0f4f8;padding:2px 6px;border-radius:3px;color:var(--accent-deep)}
+  .cb{background:#1e2d3d;border-radius:8px;padding:20px 22px;margin:16px 0;overflow-x:auto}
+  .cb pre{color:#cdd9e5;font:13px/1.75 ui-monospace,Menlo,Consolas,monospace;margin:0;white-space:pre}
+  .cb .c{color:#6e9cbf}.cb .k{color:#79b8ff}.cb .s{color:#9ecbff}
+  .cb .n{color:#b392f0}.cb .f{color:#85e89d}.cb .t{color:#ffab70}
+  .anno{list-style:none;margin:4px 0 24px;padding:0;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+  .anno li{display:grid;grid-template-columns:36px 1fr;gap:0;border-bottom:1px solid var(--line);font-size:13.5px}
+  .anno li:last-child{border-bottom:none}
+  .anno .num{background:var(--accent-deep);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;font-family:ui-monospace,Menlo,Consolas,monospace}
+  .anno .txt{padding:10px 14px;color:var(--ink-soft);line-height:1.5}
+  .anno .txt strong{color:var(--ink)}
+  .series-nav{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}
+  .series-nav a{display:inline-block;padding:6px 14px;border-radius:6px;font-size:12.5px;font-weight:600;border:1px solid var(--line);background:var(--paper);color:var(--ink-soft)}
+  .series-nav a.current{background:var(--accent-deep);color:#fff;border-color:var(--accent-deep)}
+  .series-nav a:hover{border-color:var(--accent);color:var(--accent);text-decoration:none}
+
+  /* Colour swatch for CN states table */
+  .swatch{display:inline-block;width:14px;height:14px;border-radius:3px;vertical-align:middle;margin-right:5px}
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+<!-- ═══ SIDEBAR ═══════════════════════════════════════════ -->
+<aside class="toc">
+  <div class="toc-brand">PERSONAL BRIEFING — EGGD_PURPLE_PLOTTER<br>23 June 2026</div>
+  <div class="toc-section">Part 2 &middot; Key concepts</div>
+  <ul>
+    <li><a href="#s07">07 &middot; Python dataclasses</a></li>
+    <li><a href="#s08">08 &middot; pandas DataFrames</a></li>
+    <li><a href="#s09">09 &middot; tarfile / gzip / BytesIO</a></li>
+    <li><a href="#s10">10 &middot; log&#x2082; and CN/ploidy</a></li>
+    <li><a href="#s11">11 &middot; BEDGraph format</a></li>
+    <li><a href="#s12">12 &middot; SEG format</a></li>
+    <li><a href="#s13">13 &middot; str.format() and {{ }}</a></li>
+    <li><a href="#s14">14 &middot; JavaScript blob URLs</a></li>
+  </ul>
+  <div class="meta">Source: purple_plotter.py<br>DNAnexus app &middot; eggd_purple_plotter<br>Code walkthrough series, Part 2 of 4</div>
+</aside>
+
+<!-- ═══ MAIN ════════════════════════════════════════════════ -->
+<main>
+
+<!-- ── HERO ─────────────────────────────────────────────── -->
+<header class="hero">
+  <div class="eyebrow">Code walkthrough &middot; DNAnexus &middot; Clinical bioinformatics</div>
+  <h1>eggd_purple_plotter</h1>
+  <p class="part-label">&#x2014; Part 2 of 4: Key concepts</p>
+  <p class="sub">A guided walkthrough of the DNAnexus app that converts PURPLE/CNVkit outputs into a self-contained IGV.js HTML viewer.</p>
+  <div class="meta-row">
+    <span class="meta-item"><strong>Author</strong> Joo Wook Ahn</span>
+    <span class="meta-item"><strong>Date</strong> 23 June 2026</span>
+    <span class="meta-item"><strong>Source</strong> purple_plotter.py</span>
+  </div>
+</header>
+
+<div class="series-nav">
+  <a href="260623_eggd_purple_plotter_1.html">1 &middot; High-level outline</a>
+  <a href="260623_eggd_purple_plotter_2.html" class="current">2 &middot; Key concepts</a>
+  <a href="260623_eggd_purple_plotter_3.html">3 &middot; Function walkthrough</a>
+  <a href="260623_eggd_purple_plotter_4.html">4 &middot; Line-by-line reference</a>
+</div>
+
+
+<!-- ── SECTION 07 ────────────────────────────────────────── -->
+<section id="s07">
+  <h2><span class="sec-num">07</span> Python dataclasses</h2>
+
+  <p>A <strong>dataclass</strong> is a regular Python class decorated with <code>@dataclass</code>. The decorator inspects the class body for <strong>field declarations</strong> — lines of the form <code>name: type</code> or <code>name: type = default</code> — and automatically generates an <code>__init__</code> method that accepts those fields as parameters, a <code>__repr__</code> that prints all fields, and an <code>__eq__</code> that compares instances by field values. The result is a clean, self-documenting container class with none of the boilerplate of a hand-written constructor.</p>
+
+  <p>Fields without defaults must be listed before fields with defaults, the same rule as positional vs keyword arguments in a function signature. For <strong>mutable defaults</strong> such as lists or dicts, Python forbids writing <code>tags: list = []</code> directly — all instances would share the same list object. Instead, <code>field(default_factory=list)</code> tells the dataclass machinery to call <code>list()</code> fresh for each new instance.</p>
+
+  <div class="cb"><pre><span class="k">from</span> dataclasses <span class="k">import</span> <span class="f">dataclass</span>, <span class="f">field</span>
+
+<span class="t">@dataclass</span>
+<span class="k">class</span> <span class="t">Point</span>:
+    <span class="n">x</span>:      <span class="t">float</span>                          <span class="c"># required field — no default</span>
+    <span class="n">y</span>:      <span class="t">float</span>                          <span class="c"># required field — no default</span>
+    <span class="n">label</span>:  <span class="t">str</span>  = <span class="s">"unknown"</span>              <span class="c"># optional field with scalar default</span>
+    <span class="n">tags</span>:   <span class="t">list</span> = <span class="f">field</span>(default_factory=<span class="t">list</span>)  <span class="c"># mutable default — use field()</span>
+
+<span class="n">p</span> = <span class="t">Point</span>(<span class="n">1.0</span>, <span class="n">2.5</span>)
+<span class="f">print</span>(<span class="n">p</span>)   <span class="c"># Point(x=1.0, y=2.5, label='unknown', tags=[])</span>
+<span class="f">print</span>(<span class="n">p</span> == <span class="t">Point</span>(<span class="n">1.0</span>, <span class="n">2.5</span>))   <span class="c"># True — __eq__ compares field values</span></pre></div>
+
+  <ul class="anno">
+    <li>
+      <div class="num">1</div>
+      <div class="txt"><strong><code>@dataclass</code></strong> — the decorator that triggers code generation; Python inspects the class body and synthesises <code>__init__</code>, <code>__repr__</code>, and <code>__eq__</code> at class-creation time</div>
+    </li>
+    <li>
+      <div class="num">2</div>
+      <div class="txt"><strong><code>x: float</code></strong> — a required field; no default value means the caller must supply it as the first positional argument to <code>Point(...)</code></div>
+    </li>
+    <li>
+      <div class="num">3</div>
+      <div class="txt"><strong><code>label: str = "unknown"</code></strong> — an optional field with a plain immutable default; safe to write directly</div>
+    </li>
+    <li>
+      <div class="num">4</div>
+      <div class="txt"><strong><code>field(default_factory=list)</code></strong> — for mutable defaults, <code>field()</code> stores a callable rather than an object; each <code>Point()</code> call gets its own fresh list, avoiding shared-state bugs</div>
+    </li>
+  </ul>
+
+  <div class="callout blue">
+    <span class="tag">In this file</span>
+    <p>Five dataclasses group related data without boilerplate constructors: <code>PurpleData</code> (three DataFrames from the tar archive), <code>QCData</code> (purity / ploidy / status scalars), <code>MSIData</code> (pre-formatted score and status strings), <code>CNVkitData</code> (three optional DataFrames), and <code>PlotInputs</code> (the top-level aggregator). <code>PlotInputs</code> uses <code>field(default_factory=QCData)</code> and <code>field(default_factory=MSIData)</code> so that callers who omit those fields get safe default instances rather than <code>None</code>.</p>
+  </div>
+</section>
+
+
+<!-- ── SECTION 08 ────────────────────────────────────────── -->
+<section id="s08">
+  <h2><span class="sec-num">08</span> pandas DataFrames and <code>.iterrows()</code></h2>
+
+  <p>A <strong>DataFrame</strong> is pandas' central data structure: a two-dimensional table where each column has a name (taken from the header row of the file) and a consistent dtype. <code>pd.read_csv(path, sep="\t")</code> reads a tab-delimited file into a DataFrame in a single call; the first row is automatically treated as the column header.</p>
+
+  <p>Once loaded, rows can be filtered with <strong>boolean indexing</strong>: <code>df[df["chromosome"] == "chr7"]</code> produces a new DataFrame containing only the rows where that condition is true. <strong><code>.iterrows()</code></strong> then yields <code>(index, Series)</code> pairs for each row, where the Series allows column access by name. Individual values are returned as objects that may need explicit <code>int()</code> or <code>float()</code> casts — pandas uses its own numeric types and will raise a <code>TypeError</code> in some arithmetic contexts without the cast.</p>
+
+  <p>This is not the fastest pattern (fully vectorised operations are faster) but it is the clearest for the kind of per-row string formatting that every conversion function does here, where readability of the output format is the priority.</p>
+
+  <div class="cb"><pre><span class="k">import</span> pandas <span class="k">as</span> <span class="n">pd</span>
+
+<span class="n">df</span>  = <span class="n">pd</span>.<span class="f">read_csv</span>(<span class="s">"target_region_cn.tsv"</span>, sep=<span class="s">"\t"</span>)    <span class="c"># load TSV</span>
+<span class="n">sub</span> = <span class="n">df</span>[<span class="n">df</span>[<span class="s">"chromosome"</span>] == <span class="s">"chr7"</span>]              <span class="c"># filter to chr7</span>
+
+<span class="k">for</span> <span class="n">_</span>, <span class="n">row</span> <span class="k">in</span> <span class="n">sub</span>.<span class="f">iterrows</span>():                      <span class="c"># iterate filtered rows</span>
+    <span class="n">chrom</span>  = <span class="n">row</span>[<span class="s">"chromosome"</span>]
+    <span class="n">start</span>  = <span class="f">int</span>(<span class="n">row</span>[<span class="s">"windowStart"</span>])                 <span class="c"># explicit cast needed</span>
+    <span class="n">end</span>    = <span class="f">int</span>(<span class="n">row</span>[<span class="s">"windowEnd"</span>])
+    <span class="n">ratio</span>  = <span class="f">float</span>(<span class="n">row</span>[<span class="s">"windowTumorRatio"</span>])
+    <span class="n">lines</span>.<span class="f">append</span>(<span class="n">f</span><span class="s">"{chrom}\t{start}\t{end}\t{ratio:.4f}"</span>)</pre></div>
+
+  <ul class="anno">
+    <li>
+      <div class="num">1</div>
+      <div class="txt"><strong><code>pd.read_csv(..., sep="\t")</code></strong> — reads the header row as column names; subsequent rows become data; the whole file is loaded into memory at once</div>
+    </li>
+    <li>
+      <div class="num">2</div>
+      <div class="txt"><strong><code>df[df["chromosome"] == "chr7"]</code></strong> — boolean indexing; the inner expression produces a boolean Series; the outer brackets select only <code>True</code> rows; returns a view or copy of the DataFrame</div>
+    </li>
+    <li>
+      <div class="num">3</div>
+      <div class="txt"><strong><code>for _, row in sub.iterrows():</code></strong> — yields <code>(integer_index, Series)</code> pairs; the <code>_</code> discards the row index which is not needed for BEDGraph output</div>
+    </li>
+    <li>
+      <div class="num">4</div>
+      <div class="txt"><strong><code>int(row[...])</code> and <code>float(row[...])</code></strong> — explicit Python casts; pandas stores integers and floats in NumPy types that may cause type errors in <code>f</code>-string formatting or arithmetic without the conversion</div>
+    </li>
+  </ul>
+
+  <div class="callout blue">
+    <span class="tag">In this file</span>
+    <p>Every one of the 9 conversion functions follows this exact pattern: load a DataFrame (already done in the Load phase), filter to a chromosome, iterate with <code>.iterrows()</code>, cast values, and <code>append</code> a formatted string to a list. The list is joined with <code>"\n".join(lines)</code> at the end to produce the final BEDGraph or SEG string.</p>
+  </div>
+</section>
+
+
+<!-- ── SECTION 09 ────────────────────────────────────────── -->
+<section id="s09">
+  <h2><span class="sec-num">09</span> tarfile, gzip, and BytesIO</h2>
+
+  <p>PURPLE produces multiple output files (copy-number segments, target-region coverage, allele frequencies) that are bundled into a single <code>.tar.gz</code> archive for transfer. The Python standard library handles this entirely without unpacking to disk.</p>
+
+  <p><code>tarfile.open(path, "r:gz")</code> opens a gzip-compressed tar file for reading. <code>tf.getmembers()</code> returns a list of <code>TarInfo</code> objects, each with a <code>.name</code> attribute (the path inside the archive). <code>tf.extractfile(member)</code> returns a file-like object; calling <code>.read()</code> on it yields raw <code>bytes</code>. Those bytes are passed to <code>io.BytesIO()</code>, which wraps them as an in-memory file object that pandas can read exactly as it would a real file — no temporary file is written to disk.</p>
+
+  <p>The BAF file adds a second complication: in production archives the member itself is also gzip-compressed (named <code>.amber.baf.tsv.gz</code>). The extracted bytes must first be passed through <code>gzip.decompress()</code> before being wrapped in <code>BytesIO</code>. This double-compression is the reason <code>load_purple_data</code> checks for the <code>.gz</code>-suffixed member before falling back to the plain <code>.tsv</code> path used in test fixtures.</p>
+
+  <div class="cb"><pre><span class="k">import</span> tarfile, gzip, io
+<span class="k">import</span> pandas <span class="k">as</span> <span class="n">pd</span>
+
+<span class="k">with</span> <span class="n">tarfile</span>.<span class="f">open</span>(<span class="s">"purple_output.tar.gz"</span>, <span class="s">"r:gz"</span>) <span class="k">as</span> <span class="n">tf</span>:
+    <span class="n">members</span> = <span class="n">tf</span>.<span class="f">getmembers</span>()   <span class="c"># list of TarInfo objects</span>
+
+    <span class="c"># Plain TSV member — single gzip layer from the outer tar</span>
+    <span class="n">m</span>      = <span class="f">next</span>(<span class="n">m</span> <span class="k">for</span> <span class="n">m</span> <span class="k">in</span> <span class="n">members</span> <span class="k">if</span> <span class="n">m</span>.<span class="n">name</span>.<span class="f">endswith</span>(<span class="s">".segment.tsv"</span>))
+    <span class="n">seg_df</span> = <span class="n">pd</span>.<span class="f">read_csv</span>(<span class="n">io</span>.<span class="f">BytesIO</span>(<span class="n">tf</span>.<span class="f">extractfile</span>(<span class="n">m</span>).<span class="f">read</span>()), sep=<span class="s">"\t"</span>)
+
+    <span class="c"># Double-gzipped member — must decompress before wrapping</span>
+    <span class="n">bz</span>     = <span class="f">next</span>(<span class="n">m</span> <span class="k">for</span> <span class="n">m</span> <span class="k">in</span> <span class="n">members</span> <span class="k">if</span> <span class="n">m</span>.<span class="n">name</span>.<span class="f">endswith</span>(<span class="s">".baf.tsv.gz"</span>))
+    <span class="n">raw</span>    = <span class="n">gzip</span>.<span class="f">decompress</span>(<span class="n">tf</span>.<span class="f">extractfile</span>(<span class="n">bz</span>).<span class="f">read</span>())
+    <span class="n">baf_df</span> = <span class="n">pd</span>.<span class="f">read_csv</span>(<span class="n">io</span>.<span class="f">BytesIO</span>(<span class="n">raw</span>), sep=<span class="s">"\t"</span>)</pre></div>
+
+  <ul class="anno">
+    <li>
+      <div class="num">1</div>
+      <div class="txt"><strong><code>"r:gz"</code></strong> — open mode: <code>r</code> = read, <code>:gz</code> = the outer file is gzip-compressed; the tar format is still used for directory structure inside</div>
+    </li>
+    <li>
+      <div class="num">2</div>
+      <div class="txt"><strong><code>tf.getmembers()</code></strong> — returns a list of <code>TarInfo</code> objects; each has <code>.name</code> (path within archive), <code>.size</code>, and other metadata; no file data is extracted yet</div>
+    </li>
+    <li>
+      <div class="num">3</div>
+      <div class="txt"><strong><code>io.BytesIO(tf.extractfile(m).read())</code></strong> — <code>extractfile</code> returns a file-like object; <code>.read()</code> gives <code>bytes</code>; <code>BytesIO</code> wraps those bytes so pandas treats them as an open file handle</div>
+    </li>
+    <li>
+      <div class="num">4</div>
+      <div class="txt"><strong><code>gzip.decompress(raw_bytes)</code></strong> — decompresses a gzipped payload back to raw bytes; required here because the BAF member inside the tar is itself a <code>.gz</code> file (two compression layers total)</div>
+    </li>
+  </ul>
+
+  <div class="callout blue">
+    <span class="tag">In this file</span>
+    <p><code>load_purple_data()</code> does all of the above to extract three TSVs from one archive. The function first searches for the double-compressed <code>.amber.baf.tsv.gz</code> member; if absent (e.g. in a test fixture) it falls back to a plain <code>.amber.baf.tsv</code> member read via the inner <code>read_by_suffix()</code> helper. The segment and CN files are always plain TSVs and use <code>read_by_suffix()</code> directly.</p>
+  </div>
+</section>
+
+
+<!-- ── SECTION 10 ────────────────────────────────────────── -->
+<section id="s10">
+  <h2><span class="sec-num">10</span> log&#x2082; and the CN/ploidy transformation</h2>
+
+  <p>Copy number is <strong>ratio data</strong>: a deletion, losing a copy, halves (0.5x) the signal, whereas a duplication, gaining a copy, increases it by 1.5x. On a linear scale this is asymmetric — a gain from 2 to 3 copies looks different to a deletion from 2 to 1. The <strong>log&#x2082; transform</strong> makes gains and losses symmetric around 0, which is why almost all CN visualisation tools display log&#x2082; ratios.</p>
+
+  <p>The specific formula is <code>math.log2(CN / ploidy)</code>. Dividing by ploidy first normalises for tumour ploidy: a diploid genome has ploidy 2, so at CN = 2 the result is 0 (diploid baseline). At CN = 4 the result is +1 (one doubling above baseline). At CN = 1 the result is &#x2212;1 (one halving). <code>math.log2(x)</code> raises <code>ValueError</code> for <code>x &#x2264; 0</code>, so every conversion function guards with <code>if cn &lt;= 0: continue</code> before computing the log.</p>
+
+  <div class="cb"><pre><span class="k">import</span> math
+
+<span class="n">cn</span>, <span class="n">ploidy</span> = <span class="n">4.0</span>, <span class="n">2.0</span>
+
+<span class="k">if</span> <span class="n">cn</span> &lt;= <span class="n">0</span>:
+    <span class="k">continue</span>            <span class="c"># guard: math.log2(0) raises ValueError</span>
+
+<span class="n">log2_r</span> = <span class="n">math</span>.<span class="f">log2</span>(<span class="n">cn</span> / <span class="n">ploidy</span>)   <span class="c"># +1.0 → one doubling above diploid baseline</span>
+
+<span class="c"># Classify by threshold into one of five CN states:</span>
+<span class="c"># log2_r &lt; -1.0          →  hodel   (homozygous deletion)</span>
+<span class="c"># -1.0 &lt;= log2_r &lt; -0.3  →  loss    (single-copy loss)</span>
+<span class="c"># -0.3 &lt;= log2_r &lt;  0.3  →  diploid (normal)</span>
+<span class="c"># 0.3  &lt;= log2_r &lt;  1.0  →  gain    (copy number gain)</span>
+<span class="c"># log2_r &gt;= 1.0           →  amp     (amplification)</span></pre></div>
+
+  <h3>CN states in <code>CN_STATES</code></h3>
+  <table>
+    <thead>
+      <tr>
+        <th>State key</th>
+        <th>log&#x2082;(CN/ploidy) range</th>
+        <th>Colour</th>
+        <th>Meaning</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>"hodel"</code></td>
+        <td>&lt; &#x2212;1.0</td>
+        <td><span class="swatch" style="background:#8b0000"></span><code>#8b0000</code> dark red</td>
+        <td>Homozygous deletion; both alleles lost</td>
+      </tr>
+      <tr>
+        <td><code>"loss"</code></td>
+        <td>&#x2212;1.0 to &#x2212;0.3</td>
+        <td><span class="swatch" style="background:#fca5a5"></span><code>#fca5a5</code> light red</td>
+        <td>Single-copy loss; one allele deleted</td>
+      </tr>
+      <tr>
+        <td><code>"diploid"</code></td>
+        <td>&#x2212;0.3 to +0.3</td>
+        <td><span class="swatch" style="background:#4d4d4d"></span><code>#4d4d4d</code> grey</td>
+        <td>Normal copy number; near diploid baseline</td>
+      </tr>
+      <tr>
+        <td><code>"gain"</code></td>
+        <td>+0.3 to +1.0</td>
+        <td><span class="swatch" style="background:#93c4e0"></span><code>#93c4e0</code> light blue</td>
+        <td>Copy number gain; one extra copy</td>
+      </tr>
+      <tr>
+        <td><code>"amp"</code></td>
+        <td>&#x2265; +1.0</td>
+        <td><span class="swatch" style="background:#08306b"></span><code>#08306b</code> dark blue</td>
+        <td>Amplification; high-level copy number increase</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout blue">
+    <span class="tag">In this file</span>
+    <p>The log&#x2082;(CN/ploidy) formula is used in every conversion function that works with copy number data: <code>cn_bars_by_state()</code>, <code>baf_seg_bars_by_state()</code>, <code>to_seg()</code>, <code>cns_to_seg()</code>, and implicitly in <code>coverage_log2_bedgraph()</code> (which uses <code>log2(windowTumorRatio)</code> directly). The <code>ploidy</code> value comes from <code>QCData.ploidy</code>, which defaults to <code>2.0</code> if no QC file was loaded — a safe fallback for standard diploid samples.</p>
+  </div>
+</section>
+
+
+<!-- ── SECTION 11 ────────────────────────────────────────── -->
+<section id="s11">
+  <h2><span class="sec-num">11</span> BEDGraph format</h2>
+
+  <p><strong>BEDGraph</strong> is a four-column tab-separated text format that associates a numeric value with a genomic interval. The four columns are: chromosome, chromStart, chromEnd, and value. Coordinates are <strong>0-based half-open</strong>: a region covering base positions 1&#x2013;1000 is written as start = 0, end = 1000 (the start is included, the end is excluded). This is the same convention as BED format.</p>
+
+  <p>igv.js treats BEDGraph data as a "wig" track (<code>type: "wig", format: "bedgraph"</code>). With <code>graphType: "bar"</code> it draws a bar chart, and with <code>graphType: "points"</code> it draws a scatter plot. The <code>value</code> column can be any floating-point number; negative values are drawn below the baseline.</p>
+
+  <div class="cb"><pre><span class="c"># BEDGraph format: chrom   chromStart   chromEnd   value</span>
+<span class="c"># Coordinates are 0-based, half-open (start inclusive, end exclusive)</span>
+chr1    0          999         0.5123
+chr1    999        2000       -0.2345
+chr7    49999      50000       1.0000
+chrX    1234567    1235000     0.0012
+chr22   10000000   10500000   -1.5001</pre></div>
+
+  <ul class="anno">
+    <li>
+      <div class="num">1</div>
+      <div class="txt"><strong>Column 1: chrom</strong> — chromosome name exactly as used in the genome reference (e.g. <code>chr1</code>, not <code>1</code>); igv.js uses this for track-to-genome alignment</div>
+    </li>
+    <li>
+      <div class="num">2</div>
+      <div class="txt"><strong>Columns 2–3: start and end</strong> — 0-based half-open; a single base at 1-based position P becomes start = P&#x2212;1, end = P in BEDGraph — exactly the conversion applied to AMBER BAF positions</div>
+    </li>
+    <li>
+      <div class="num">3</div>
+      <div class="txt"><strong>Column 4: value</strong> — any floating-point number; for CN log&#x2082; tracks, 0.0 is the diploid baseline; negative values are rendered below the axis in igv.js bar tracks</div>
+    </li>
+  </ul>
+
+  <div class="callout blue">
+    <span class="tag">In this file</span>
+    <p>Seven of the nine conversion functions return BEDGraph strings: <code>coverage_log2_bedgraph</code>, <code>cn_bars_by_state</code> (returns a dict of 5 strings), <code>baf_bedgraph</code>, <code>baf_bedgraph_mirror</code>, <code>baf_seg_bars_by_state</code> (returns a dict of 10 strings), <code>cnr_to_bedgraph</code>, and <code>genemetrics_to_bedgraph</code>. AMBER positions are 1-based, so the BAF functions convert with <code>pos&#x2212;1</code> as the start and <code>pos</code> as the end — writing a single-base BEDGraph interval for each BAF measurement.</p>
+  </div>
+</section>
+
+
+<!-- ── SECTION 12 ────────────────────────────────────────── -->
+<section id="s12">
+  <h2><span class="sec-num">12</span> SEG format</h2>
+
+  <p><strong>SEG</strong> (segmented copy number) is a six-column tab-separated format used to represent copy-number segments — contiguous genomic regions called as having the same copy number. Unlike BEDGraph, SEG includes a <strong>sample ID</strong> column and a <strong>probe count</strong> column, and is specifically designed for multi-sample copy-number data. The first row is always the header.</p>
+
+  <p>igv.js renders SEG data as a compact band track (<code>type: "seg"</code>) with colour-scaled rectangles: blue shades for gains, red shades for losses. The <code>Seg_Mean</code> column holds the log&#x2082; ratio used for the colour scale. A dot (<code>.</code>) is used as a placeholder for <code>Num_Probes</code> when the count is not available or not meaningful.</p>
+
+  <div class="cb"><pre><span class="c"># SEG format — tab-separated, header row required</span>
+SampleID    Chromosome  Start     End       Num_Probes  Seg_Mean
+SAMPLE01    chr1        1000000   5000000   .            0.8234
+SAMPLE01    chr1        5000001   9000000   .           -0.5123
+SAMPLE01    chr7        2000000   8000000   142          1.4501
+SAMPLE01    chr17       7572000   7580000   .           -1.8034</pre></div>
+
+  <ul class="anno">
+    <li>
+      <div class="num">1</div>
+      <div class="txt"><strong><code>SampleID</code></strong> — the sample name injected by the script; enables multi-sample SEG files; igv.js displays one row per sample in the track</div>
+    </li>
+    <li>
+      <div class="num">2</div>
+      <div class="txt"><strong><code>Start</code> and <code>End</code></strong> — 1-based closed coordinates in the SEG convention (unlike the 0-based half-open BEDGraph coordinates)</div>
+    </li>
+    <li>
+      <div class="num">3</div>
+      <div class="txt"><strong><code>Seg_Mean</code></strong> — the log&#x2082;(CN/ploidy) value; igv.js maps this to a blue&#x2013;white&#x2013;red colour scale via the <code>posColorScale</code> and <code>negColorScale</code> track options</div>
+    </li>
+  </ul>
+
+  <div class="callout blue">
+    <span class="tag">In this file</span>
+    <p><code>to_seg()</code> converts the PURPLE <code>segment.tsv</code> to a SEG string using the sample ID directly. <code>cns_to_seg()</code> converts CNVkit <code>.call.cns</code> segments and appends <code>_cnvkit</code> to the sample ID to distinguish the two tracks in the viewer. Both SEG strings are rendered in igv.js using <code>type: "seg"</code> tracks, which appear as narrow coloured bands below the bar chart track.</p>
+  </div>
+</section>
+
+
+<!-- ── SECTION 13 ────────────────────────────────────────── -->
+<section id="s13">
+  <h2><span class="sec-num">13</span> Python <code>str.format()</code> and <code>{{ }}</code> escaping</h2>
+
+  <p>Python's <code>str.format()</code> method substitutes named values into a string template by finding <code>{name}</code> placeholders and replacing them with the corresponding keyword argument. The HTML template in this file is a ~130-line Python string that contains large amounts of <strong>JavaScript</strong>, and JavaScript syntax uses <code>{</code> and <code>}</code> everywhere — for object literals, arrow functions, template literals, and destructuring.</p>
+
+  <p>This creates a conflict: any bare <code>{</code> or <code>}</code> in the template string would be treated as the start of a format placeholder, causing a <code>KeyError</code> or <code>ValueError</code>. The solution is to <strong>double the braces</strong>: write <code>{{</code> to produce a literal <code>{</code> in the output, and <code>}}</code> to produce a literal <code>}</code>. Python's format parser converts all <code>{{</code> &#x2192; <code>{</code> and <code>}}</code> &#x2192; <code>}</code> <em>after</em> substituting real placeholders.</p>
+
+  <div class="cb"><pre><span class="c"># Double braces {{ }} produce literal { } in the output</span>
+<span class="n">template</span> = <span class="s">"igv.createBrowser(div, {{ genome: '{genome}', locus: '{locus}' }});"</span>
+
+<span class="n">filled</span> = <span class="n">template</span>.<span class="f">format</span>(genome=<span class="s">"hg38"</span>, locus=<span class="s">"all"</span>)
+<span class="f">print</span>(<span class="n">filled</span>)
+<span class="c"># → igv.createBrowser(div, { genome: 'hg38', locus: 'all' });</span>
+
+<span class="c"># Extra keyword arguments that have no matching {placeholder}</span>
+<span class="c"># are silently ignored — no KeyError is raised:</span>
+<span class="n">template</span>.<span class="f">format</span>(genome=<span class="s">"hg38"</span>, locus=<span class="s">"all"</span>, extra=<span class="s">"ignored"</span>)   <span class="c"># fine</span></pre></div>
+
+  <ul class="anno">
+    <li>
+      <div class="num">1</div>
+      <div class="txt"><strong><code>{{ ... }}</code> in template</strong> — each double brace is a single escape sequence; the entire JS object literal <code>{ genome: 'hg38' }</code> must be written as <code>{{ genome: 'hg38' }}</code> in the Python string</div>
+    </li>
+    <li>
+      <div class="num">2</div>
+      <div class="txt"><strong><code>{genome}</code> is a real placeholder</strong> — a single-brace placeholder is replaced with the keyword argument value; it coexists with double-brace literals in the same string</div>
+    </li>
+    <li>
+      <div class="num">3</div>
+      <div class="txt"><strong>Extra kwargs are silently ignored</strong> — <code>str.format(**kwargs)</code> only raises <code>KeyError</code> for <em>missing</em> arguments (a placeholder exists but no matching kwarg); unused kwargs are permitted</div>
+    </li>
+  </ul>
+
+  <div class="callout blue">
+    <span class="tag">In this file</span>
+    <p><code>HTML_BARS</code> is a ~130-line template string where <em>every</em> JavaScript object literal is written with <code>{{</code> and <code>}}</code>. This includes the entire <code>igv.createBrowser()</code> call, all track configuration objects, all <code>Blob()</code> constructor arguments, and the colour scale objects. The 26 real placeholders — <code>{sample}</code>, <code>{purity}</code>, <code>{cov_log2_bg}</code>, etc. — are the only single-brace sequences. After <code>str.format(**kwargs)</code> runs, the output is valid JavaScript with normal <code>{}</code> braces throughout.</p>
+  </div>
+</section>
+
+
+<!-- ── SECTION 14 ────────────────────────────────────────── -->
+<section id="s14">
+  <h2><span class="sec-num">14</span> JavaScript blob URLs</h2>
+
+  <p>A <strong>blob URL</strong> is a browser-local URI created by <code>URL.createObjectURL(new Blob([data]))</code>. The browser allocates an in-memory object, assigns it a <code>blob:</code> scheme URI (e.g. <code>blob:http://localhost/abc-123&#x2026;</code>), and makes it accessible as if it were a real network URL — but <em>only</em> within the current tab's session. Nothing is sent over the network; the data lives entirely in the browser's heap.</p>
+
+  <p>igv.js expects its track <code>url:</code> fields to be fetchable URLs. By passing a blob URL instead of a real HTTP URL, igv.js fetches the BEDGraph or SEG data from memory rather than a server. This is the mechanism that makes the output file fully self-contained: all 19 data strings (BEDGraph tracks and SEG strings) are embedded directly in the HTML as JavaScript template literals, converted to blob URLs at page load time, and passed to igv.js track configurations.</p>
+
+  <div class="cb"><pre><span class="c">// Utility function defined at the top of the embedded &lt;script&gt;</span>
+<span class="k">function</span> <span class="f">blob</span>(txt) {
+    <span class="k">return</span> URL.<span class="f">createObjectURL</span>(
+        <span class="k">new</span> <span class="t">Blob</span>([txt], { type: <span class="s">"text/plain"</span> })
+    );
+}
+
+<span class="c">// Each data string is a JS template literal injected by Python str.format():</span>
+<span class="k">const</span> <span class="n">barAmpBg</span> = <span class="s">`{bar_amp_bg}`</span>;   <span class="c">// placeholder filled by render_html()</span>
+
+<span class="c">// Passed to igv.js as if it were a real HTTP URL:</span>
+<span class="c">// { type: "wig", format: "bedgraph", url: blob(barAmpBg), ... }</span></pre></div>
+
+  <ul class="anno">
+    <li>
+      <div class="num">1</div>
+      <div class="txt"><strong><code>new Blob([txt])</code></strong> — creates an immutable binary object from the text string; <code>type: "text/plain"</code> sets the MIME type so igv.js correctly parses the content</div>
+    </li>
+    <li>
+      <div class="num">2</div>
+      <div class="txt"><strong><code>URL.createObjectURL(blob)</code></strong> — registers the blob in the browser's object URL store and returns a unique <code>blob:</code> URI; this URI is valid only for the lifetime of the current page</div>
+    </li>
+    <li>
+      <div class="num">3</div>
+      <div class="txt"><strong>Template literal injection</strong> — the backtick string <code>`{bar_amp_bg}`</code> in the HTML template becomes a JS string containing the full BEDGraph text after Python's <code>str.format()</code> fills in the placeholder</div>
+    </li>
+    <li>
+      <div class="num">4</div>
+      <div class="txt"><strong>No server required</strong> — igv.js fetches from the blob URL via the browser's internal fetch mechanism; the HTML file can be opened directly from disk (<code>file://</code>) or from any web server; all data travels with the file</div>
+    </li>
+  </ul>
+
+  <div class="callout blue">
+    <span class="tag">In this file</span>
+    <p>All 19 data strings — coverage log&#x2082;, 4 CN-state bar tracks, BAF top and bottom scatter, 8 fitted-BAF bar tracks (4 states &#xd7; 2 arms), PURPLE SEG, CNVkit CNR scatter, CNVkit segment SEG, and CNVkit genemetrics — are injected as JS template literals and each is wrapped in the <code>blob()</code> helper before being passed to an igv.js track <code>url:</code> field. The <code>blob()</code> function itself is defined immediately above the <code>igv.createBrowser()</code> call in the <code>HTML_BARS</code> template. This is why opening the output HTML file in a browser requires only the igv.js CDN script; the entire copy-number dataset is embedded in the file.</p>
+  </div>
+</section>
+
+
+<div class="series-nav">
+  <a href="260623_eggd_purple_plotter_1.html">1 &middot; High-level outline</a>
+  <a href="260623_eggd_purple_plotter_2.html" class="current">2 &middot; Key concepts</a>
+  <a href="260623_eggd_purple_plotter_3.html">3 &middot; Function walkthrough</a>
+  <a href="260623_eggd_purple_plotter_4.html">4 &middot; Line-by-line reference</a>
+</div>
+
+</main>
+</div>
+
+<footer>
+  Continued from Part 1 &middot; Part 2 of 4 &middot; eggd_purple_plotter code walkthrough &middot; Joo Wook Ahn &middot; 23 June 2026. Continues in Part 3.
+</footer>
+
+</body>
+</html>

@@ -67,7 +67,7 @@ igv.js 3.8.3 is loaded from CDN at view time (`igv.org/web/release/3.8.3`).
 
 ```bash
 # 1. Clone and create venv
-git clone https://github.com/woook/eggd_purple_plotter
+git clone https://github.com/eastgenomics/eggd_purple_plotter
 cd eggd_purple_plotter
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
@@ -111,6 +111,9 @@ src/code.sh                          ← DNAnexus entry point; all platform I/O 
 resources/home/dnanexus/
   purple_plotter/purple_plotter.py   ← Pure Python CLI; no dxpy dependency
   packages/                          ← Bundled wheels for offline pip install
+resources/usr/bin/
+  mark-section                       ← DNAnexus structured logging helper
+  mark-success                       ← DNAnexus job success marker
 tests/                               ← pytest unit + CLI integration tests
 ```
 

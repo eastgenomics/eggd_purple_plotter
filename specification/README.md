@@ -2,8 +2,10 @@
 
 `eggd_purple_plotter` is a DNAnexus app that takes per-sample outputs from the
 PURPLE/AMBER/CNVkit pipeline and generates a fully self-contained IGV.js HTML
-file showing copy-number and allele-frequency tracks. The HTML embeds all data
-as blob URLs — no server or network access is required to view it.
+file showing copy-number and allele-frequency tracks. The HTML embeds all track
+data as in-memory blob URLs — no server is required to view it. igv.js 3.8.3 is
+loaded from the igv.org CDN at view time, so an internet connection is needed to
+render the tracks.
 
 ## What this app does
 

@@ -466,7 +466,11 @@ def render_html(inputs: "PlotInputs") -> str:
     ploidy = inputs.qc.ploidy
 
     # Sanitise sample_id for backtick JS literal context (used in seg/CNVkit SEG strings)
-    sample_js = inputs.sample_id.replace("`", "\\`").replace("${" , "\\${")
+    # Also escape </ to prevent </script> breaking out of the inline <script> block
+    sample_js = (inputs.sample_id
+                 .replace("`", "\\`")
+                 .replace("${" , "\\${")
+                 .replace("</", "<\\/"))
 
     # PURPLE tracks (empty strings if purple is None)
     if inputs.purple is not None:
@@ -493,7 +497,10 @@ def render_html(inputs: "PlotInputs") -> str:
 
     # Sanitise values injected into HTML/JS contexts
     sample_html  = _html.escape(inputs.sample_id)           # used in <title> and <span>
-    locus_js     = inputs.locus.replace("\\", "\\\\").replace('"', '\\"')  # inside JS string
+    locus_js     = (inputs.locus
+                     .replace("\\", "\\\\")
+                     .replace('"', '\\"')
+                     .replace("</", "<\\/"))  # prevent </script> injection
 
     return HTML_BARS.format(
         sample               = sample_html,

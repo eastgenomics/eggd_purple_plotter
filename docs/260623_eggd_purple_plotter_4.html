@@ -111,10 +111,10 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;background
 
   <div class="acb">
     <div class="acb-header">
-      <span class="acb-fn">load_purple_data(purple_tar, sample_id)</span>
+      <span class="acb-fn">load_purple_data(purple_tar)</span>
       <span class="acb-desc">Extract three DataFrames from a PURPLE tar.gz archive</span>
     </div>
-    <div class="acb-code"><pre>def load_purple_data(purple_tar: Path, sample_id: str) -&gt; PurpleData:
+    <div class="acb-code"><pre>def load_purple_data(purple_tar: Path) -&gt; PurpleData:
     """Extract amber.baf.tsv, target_region_cn.tsv, purple.segment.tsv from tar.gz."""
     with tarfile.open(purple_tar, "r:gz") as tf:  # &#9312;
         members = tf.getmembers()                  # &#9313;

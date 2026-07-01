@@ -2,7 +2,7 @@
 
 A DNAnexus app that takes per-sample outputs from the PURPLE/AMBER/CNVkit pipeline and generates a fully self-contained IGV.js HTML copy-number viewer.
 
-The HTML embeds all track data as in-memory blob URLs — no server, no network, no IGV installation required. Open it in a browser.
+The HTML embeds all track data as in-memory blob URLs — no server is required to view it. igv.js 3.8.3 is loaded from the igv.org CDN at view time, so an internet connection is needed to render the tracks.
 
 ---
 

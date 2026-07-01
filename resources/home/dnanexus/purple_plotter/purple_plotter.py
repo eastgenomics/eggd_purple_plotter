@@ -60,7 +60,7 @@ class PlotInputs:
 
 # ── Data loading ───────────────────────────────────────────────────────────────
 
-def load_purple_data(purple_tar: Path, sample_id: str) -> PurpleData:
+def load_purple_data(purple_tar: Path) -> PurpleData:
     """Extract amber.baf.tsv, target_region_cn.tsv, purple.segment.tsv from tar.gz."""
     with tarfile.open(purple_tar, "r:gz") as tf:
         members = tf.getmembers()
@@ -558,7 +558,7 @@ def main() -> None:
             "Provide PURPLE outputs, CNVkit outputs, or both."
         )
 
-    purple = load_purple_data(Path(args.purple_tar), args.sample) if args.purple_tar else None
+    purple = load_purple_data(Path(args.purple_tar)) if args.purple_tar else None
     qc     = load_qc_data(Path(args.qc_report) if args.qc_report else None)
     msi    = load_msi_data(Path(args.msi_report) if args.msi_report else None)
     cnvkit = load_cnvkit_data(

@@ -24,7 +24,7 @@ def make_purple_tar(tmp_path: Path, sample: str = "sample") -> Path:
 
 def test_load_purple_data(tmp_path):
     tar = make_purple_tar(tmp_path)
-    result = load_purple_data(tar, "sample")
+    result = load_purple_data(tar)
     assert len(result.baf_df) == 3
     assert "tumorBAF" in result.baf_df.columns
     assert len(result.cn_df) == 4

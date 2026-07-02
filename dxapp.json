@@ -1,0 +1,90 @@
+{
+  "name": "eggd_purple_plotter",
+  "title": "PURPLE IGV bars plotter",
+  "summary": "Generates a self-contained igv.js HTML viewer from PURPLE/AMBER/CNVkit per-sample outputs",
+  "dxapi": "1.0.0",
+  "version": "1.0.0",
+  "properties": { "githubRelease": "1.0.0" },
+  "developers":      ["org-emee_1"],
+  "authorizedUsers": ["org-emee_1"],
+  "inputSpec": [
+    {
+      "name": "sample_id",
+      "class": "string",
+      "label": "Sample ID",
+      "help": "Sample identifier used in the output filename and HTML header."
+    },
+    {
+      "name": "purple_tar",
+      "class": "file",
+      "label": "PURPLE tar.gz",
+      "optional": true,
+      "patterns": ["*.purple.tar.gz", "*.tar.gz"],
+      "help": "PURPLE output archive ({sample}.purple.tar.gz) containing AMBER BAF, target-region CN, and segment TSVs. At least one of purple_tar or cnvkit_cnr must be supplied."
+    },
+    {
+      "name": "qc_report",
+      "class": "file",
+      "label": "QC report TSV",
+      "optional": true,
+      "patterns": ["*.tsv"],
+      "help": "QC report TSV ({sample}.qc_report.tsv) containing purity, ploidy, and status columns. If absent, purity and ploidy are shown as '?' in the viewer header."
+    },
+    {
+      "name": "cnvkit_cnr",
+      "class": "file",
+      "label": "CNVkit CNR",
+      "optional": true,
+      "patterns": ["*.cnr"],
+      "help": "CNVkit per-target log2 ratio file ({sample}.cnr). At least one of purple_tar or cnvkit_cnr must be supplied."
+    },
+    {
+      "name": "cnvkit_call_cns",
+      "class": "file",
+      "label": "CNVkit called segments",
+      "optional": true,
+      "patterns": ["*.call.cns", "*.cns"],
+      "help": "CNVkit called copy-number segments file ({sample}.call.cns)."
+    },
+    {
+      "name": "cnvkit_genemetrics",
+      "class": "file",
+      "label": "CNVkit genemetrics CSV",
+      "optional": true,
+      "patterns": ["*.genemetrics.csv", "*.csv"],
+      "help": "CNVkit per-gene metrics file ({sample}.genemetrics.csv)."
+    },
+    {
+      "name": "msi_report",
+      "class": "file",
+      "label": "MSI report TSV",
+      "optional": true,
+      "patterns": ["*.tsv"],
+      "help": "MSI report TSV ({sample}.msi.tsv) containing an msi_score column. If absent, MSI is shown as '?' in the viewer header."
+    },
+    {
+      "name": "locus",
+      "class": "string",
+      "label": "Initial IGV locus",
+      "optional": true,
+      "default": "all",
+      "help": "Initial genomic locus displayed when the viewer opens (e.g. chr7:116672196-117120285). Defaults to 'all' (whole genome)."
+    }
+  ],
+  "outputSpec": [
+    { "name": "igv_html", "class": "file", "label": "IGV bars HTML viewer" }
+  ],
+  "runSpec": {
+    "distribution": "Ubuntu",
+    "release":      "24.04",
+    "version":      "0",
+    "interpreter":  "bash",
+    "file":         "src/code.sh",
+    "timeoutPolicy": { "*": { "hours": 1 } }
+  },
+  "regionalOptions": {
+    "aws:eu-central-1": {
+      "systemRequirements": { "*": { "instanceType": "mem1_ssd1_v2_x2" } }
+    }
+  }
+}

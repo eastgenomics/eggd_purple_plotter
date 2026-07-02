@@ -1,0 +1,692 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>eggd_purple_plotter — Part 1: High-level outline</title>
+<style>
+  :root{
+    --ink:#0d1b2a;--ink-soft:#354656;--muted:#6b7c8d;
+    --line:#e0e7ef;--line-strong:#c5d0db;
+    --bg:#f7f9fb;--paper:#ffffff;
+    --accent:#005eb8;--accent-deep:#003d78;--accent-mid:#1a73c4;--accent-soft:#e3edf8;
+    --green:#1a6e47;--green-soft:#e0f0e8;
+    --amber:#b35c00;--amber-soft:#fdf0e0;
+    --red:#9b2335;--red-soft:#fce8ea;
+    --purple:#4b2d8e;--purple-soft:#ede8f8;
+    --shadow:0 1px 3px rgba(13,27,42,.05),0 4px 20px rgba(13,27,42,.08);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","Inter",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  a{color:var(--accent-mid);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .layout{display:grid;grid-template-columns:270px minmax(0,1fr);max-width:1320px;margin:0 auto}
+  @media(max-width:860px){.layout{grid-template-columns:1fr}.toc{display:none}}
+  main{padding:0 56px 96px;max-width:900px}
+  @media(max-width:860px){main{padding:0 24px 64px}}
+  h1{font-size:38px;line-height:1.1;letter-spacing:-.015em;font-weight:800;color:var(--ink);margin-bottom:14px;max-width:22ch}
+  h2{font-size:24px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:12px}
+  h2 .sec-num{font-size:12px;letter-spacing:.06em;text-transform:uppercase;background:var(--accent);color:#fff;padding:3px 9px;border-radius:999px;font-weight:700;white-space:nowrap}
+  h3{font-size:17px;font-weight:700;margin:28px 0 10px;color:var(--ink)}
+  h4{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:20px 0 8px;font-weight:600}
+  p{margin-bottom:13px;color:var(--ink-soft)}
+  strong{color:var(--ink)}
+  ul,ol{margin:0 0 14px;padding-left:22px}
+  li{margin:5px 0;color:var(--ink-soft)}
+  .toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:28px 24px;background:var(--paper);border-right:1px solid var(--line);font-size:13px}
+  .toc-brand{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-deep);margin-bottom:20px;line-height:1.4}
+  .toc-section{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:18px 0 6px}
+  .toc ul{list-style:none}
+  .toc ul li a{display:block;padding:5px 0 5px 16px;color:var(--ink-soft);border-left:2px solid transparent;transition:all .15s;font-size:12.5px;line-height:1.4}
+  .toc ul li a:hover{color:var(--accent);border-left-color:var(--accent);text-decoration:none;padding-left:20px}
+  .toc .meta{margin-top:22px;padding-top:18px;border-top:1px solid var(--line);font-size:11.5px;color:var(--muted);line-height:1.6}
+  .hero{padding:52px 0 36px;border-bottom:1px solid var(--line);margin-bottom:8px}
+  .hero .eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:12px}
+  .hero h1{font-size:38px;line-height:1.1;letter-spacing:-.015em;font-weight:800;color:var(--ink);margin-bottom:10px;max-width:22ch}
+  .hero .part-label{font-size:18px;font-weight:600;color:var(--accent-deep);margin-bottom:14px}
+  .hero .sub{font-size:17px;line-height:1.55;color:var(--ink-soft);max-width:64ch}
+  .hero .meta-row{display:flex;gap:24px;margin-top:20px;flex-wrap:wrap}
+  .hero .meta-item{font-size:12px;color:var(--muted)}
+  .hero .meta-item strong{color:var(--ink-soft)}
+  section{padding-top:52px}
+  section+section{border-top:1px solid var(--line)}
+  footer{padding:32px 56px;color:var(--muted);font-size:12px;border-top:1px solid var(--line);max-width:1320px;margin:0 auto;line-height:1.7}
+  .callout{border-radius:6px;padding:18px 22px;margin:18px 0;border:1px solid}
+  .callout.blue{border-color:#b3cce8;background:var(--accent-soft)}
+  .callout.green{border-color:#a8d4bb;background:var(--green-soft)}
+  .callout.amber{border-color:#e8c28a;background:var(--amber-soft)}
+  .callout .tag{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;margin-bottom:6px}
+  .callout.blue .tag{color:var(--accent-deep)}
+  .callout.green .tag{color:var(--green)}
+  .callout.amber .tag{color:var(--amber)}
+  .callout p:last-child{margin:0}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:22px 0}
+  @media(max-width:640px){.stats{grid-template-columns:repeat(2,1fr)}}
+  .stat{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:16px;border-top:3px solid var(--accent)}
+  .stat .n{font-size:26px;font-weight:800;color:var(--accent-deep);line-height:1.1;font-variant-numeric:tabular-nums}
+  .stat .l{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.4}
+  .stat .src{font-size:10.5px;color:var(--line-strong);margin-top:8px;font-style:italic}
+  .card-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin:18px 0}
+  @media(max-width:640px){.card-grid{grid-template-columns:1fr}}
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:18px;box-shadow:var(--shadow)}
+  .card-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .card-icon{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .card-name{font-weight:700;font-size:14.5px;color:var(--ink);line-height:1.2}
+  .card-sub{font-size:11.5px;color:var(--muted)}
+  .card p{font-size:13.5px;margin:0 0 10px}
+  .card p:last-child{margin:0}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.04em}
+  .pill.green{background:var(--green-soft);color:var(--green)}
+  .pill.amber{background:var(--amber-soft);color:var(--amber)}
+  .pill.blue{background:var(--accent-soft);color:var(--accent-deep)}
+  .pill.purple{background:var(--purple-soft);color:var(--purple)}
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px}
+  th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#f0f4f8;font-weight:600;font-size:12.5px;color:var(--ink);letter-spacing:.02em}
+  tr:hover td{background:#fafbfd}
+  figure{margin:24px 0}
+  .fig-wrap{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:20px;overflow:auto}
+  figcaption{font-size:12px;color:var(--muted);text-align:center;margin-top:8px;font-style:italic;line-height:1.5}
+  .ref{display:inline-block;background:#f0f4f8;border:1px solid var(--line);border-radius:4px;padding:1px 7px;font-size:11.5px;color:var(--ink-soft);font-family:ui-monospace,Menlo,Consolas,monospace;white-space:nowrap}
+
+  /* Code-mode additional CSS */
+  code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;background:#f0f4f8;padding:2px 6px;border-radius:3px;color:var(--accent-deep)}
+  .cb{background:#1e2d3d;border-radius:8px;padding:20px 22px;margin:16px 0;overflow-x:auto}
+  .cb pre{color:#cdd9e5;font:13px/1.75 ui-monospace,Menlo,Consolas,monospace;margin:0;white-space:pre}
+  .cb .c{color:#6e9cbf}.cb .k{color:#79b8ff}.cb .s{color:#9ecbff}
+  .cb .n{color:#b392f0}.cb .f{color:#85e89d}.cb .t{color:#ffab70}
+  .anno{list-style:none;margin:4px 0 24px;padding:0;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+  .anno li{display:grid;grid-template-columns:36px 1fr;gap:0;border-bottom:1px solid var(--line);font-size:13.5px}
+  .anno li:last-child{border-bottom:none}
+  .anno .num{background:var(--accent-deep);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;font-family:ui-monospace,Menlo,Consolas,monospace}
+  .anno .txt{padding:10px 14px;color:var(--ink-soft);line-height:1.5}
+  .anno .txt strong{color:var(--ink)}
+  .series-nav{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}
+  .series-nav a{display:inline-block;padding:6px 14px;border-radius:6px;font-size:12.5px;font-weight:600;border:1px solid var(--line);background:var(--paper);color:var(--ink-soft)}
+  .series-nav a.current{background:var(--accent-deep);color:#fff;border-color:var(--accent-deep)}
+  .series-nav a:hover{border-color:var(--accent);color:var(--accent);text-decoration:none}
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+<!-- ═══ SIDEBAR ═══════════════════════════════════════════ -->
+<aside class="toc">
+  <div class="toc-brand">PERSONAL BRIEFING — EGGD_PURPLE_PLOTTER<br>23 June 2026</div>
+  <div class="toc-section">Part 1 &middot; High-level outline</div>
+  <ul>
+    <li><a href="#s01">01 &middot; What this file does</a></li>
+    <li><a href="#s02">02 &middot; The four phases</a></li>
+    <li><a href="#s03">03 &middot; Data flow</a></li>
+    <li><a href="#s04">04 &middot; External dependencies</a></li>
+    <li><a href="#s05">05 &middot; Function inventory</a></li>
+    <li><a href="#s06">06 &middot; Naming conventions</a></li>
+  </ul>
+  <div class="meta">Source: purple_plotter.py<br>DNAnexus app &middot; eggd_purple_plotter<br>Code walkthrough series, Part 1 of 4</div>
+</aside>
+
+<!-- ═══ MAIN ════════════════════════════════════════════════ -->
+<main>
+
+<!-- ── HERO ─────────────────────────────────────────────── -->
+<header class="hero">
+  <div class="eyebrow">Code walkthrough &middot; DNAnexus &middot; Clinical bioinformatics</div>
+  <h1>eggd_purple_plotter</h1>
+  <p class="part-label">&#x2014; Part 1 of 4: High-level outline</p>
+  <p class="sub">A guided walkthrough of the DNAnexus app that converts PURPLE/CNVkit outputs into a self-contained IGV.js HTML viewer.</p>
+  <div class="meta-row">
+    <span class="meta-item"><strong>Author</strong> Joo Wook Ahn</span>
+    <span class="meta-item"><strong>Date</strong> 23 June 2026</span>
+    <span class="meta-item"><strong>Source</strong> purple_plotter.py</span>
+  </div>
+</header>
+
+<div class="series-nav">
+  <a href="260623_eggd_purple_plotter_1.html" class="current">1 &middot; High-level outline</a>
+  <a href="260623_eggd_purple_plotter_2.html">2 &middot; Key concepts</a>
+  <a href="260623_eggd_purple_plotter_3.html">3 &middot; Function walkthrough</a>
+  <a href="260623_eggd_purple_plotter_4.html">4 &middot; Line-by-line reference</a>
+</div>
+
+
+<!-- ── SECTION 01 ────────────────────────────────────────── -->
+<section id="s01">
+  <h2><span class="sec-num">01</span> What this file does</h2>
+
+  <p><code>purple_plotter.py</code> is a pure Python command-line script that accepts file paths as CLI arguments, reads PURPLE copy-number and B-allele-frequency outputs together with optional CNVkit files, converts all the tabular data into BEDGraph and SEG format strings, then fills a single HTML template to produce a <strong>fully self-contained IGV.js copy-number viewer</strong>. The file has no DNAnexus API calls and makes no network requests at runtime — it is plain Python plus pandas, invoked by the DNAnexus app's bash wrapper after it has downloaded all the inputs. The output is a single <code>.igv.bars.html</code> file whose entire data payload is embedded as JavaScript template literals; opening it in a browser requires only access to the CDN-hosted igv.js library script tag already included in the template.</p>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="n">9</div>
+      <div class="l">conversion functions</div>
+      <div class="src">BEDGraph and SEG producers</div>
+    </div>
+    <div class="stat">
+      <div class="n">4</div>
+      <div class="l">data loaders</div>
+      <div class="src">load_*_data() family</div>
+    </div>
+    <div class="stat">
+      <div class="n">1</div>
+      <div class="l">HTML template</div>
+      <div class="src">HTML_BARS constant, ~130 lines</div>
+    </div>
+    <div class="stat">
+      <div class="n">16</div>
+      <div class="l">total functions</div>
+      <div class="src">load(4) + convert(9) + render(2) + CLI(1)</div>
+    </div>
+  </div>
+
+  <div class="callout blue">
+    <span class="tag">What it is NOT</span>
+    <p>This file contains <strong>no <code>dxpy</code> API calls</strong>, <strong>no network I/O</strong>, and <strong>no subprocess invocations</strong>. It is a pure data-transformation script. The DNAnexus plumbing — downloading inputs, setting environment variables, and uploading the finished HTML — is handled entirely by a separate bash entry-point script that calls this Python file once all files are in place.</p>
+  </div>
+</section>
+
+
+<!-- ── SECTION 02 ────────────────────────────────────────── -->
+<section id="s02">
+  <h2><span class="sec-num">02</span> The four phases</h2>
+
+  <p>Every run of <code>purple_plotter.py</code> passes through four sequential phases: CLI argument ingestion, data loading from files on disk, conversion of DataFrames to text-format strings, and HTML rendering. The diagram below shows how they connect; data flows strictly left to right with no feedback loops.</p>
+
+  <figure>
+  <div class="fig-wrap">
+  <svg viewBox="0 0 820 195" xmlns="http://www.w3.org/2000/svg"
+       role="img" aria-label="Four-stage pipeline: Ingest, Load, Convert, Render">
+    <style>
+      .pl{font:700 14px -apple-system,Segoe UI,sans-serif}
+      .ps{font:11px -apple-system,Segoe UI,sans-serif}
+      .pd{font:700 10px -apple-system,Segoe UI,sans-serif;letter-spacing:1.5px}
+    </style>
+
+    <text x="14" y="20" class="pd" fill="#6b7c8d">PIPELINE OVERVIEW</text>
+
+    <!-- Box 1: Ingest -->
+    <rect x="14" y="34" width="158" height="88" rx="8" fill="#003d78"/>
+    <text x="93" y="69" text-anchor="middle" fill="#ffffff" class="pl">Ingest</text>
+    <text x="93" y="87" text-anchor="middle" fill="#9aafc4" class="ps">argparse, Path</text>
+    <text x="93" y="103" text-anchor="middle" fill="#9aafc4" class="ps">CLI arguments</text>
+
+    <!-- Arrow 1 -->
+    <line x1="173" y1="78" x2="197" y2="78" stroke="#9aafc4" stroke-width="2"/>
+    <polygon points="194,72 205,78 194,84" fill="#9aafc4"/>
+
+    <!-- Box 2: Load -->
+    <rect x="206" y="34" width="158" height="88" rx="8" fill="#003d78"/>
+    <text x="285" y="69" text-anchor="middle" fill="#ffffff" class="pl">Load</text>
+    <text x="285" y="87" text-anchor="middle" fill="#9aafc4" class="ps">tarfile / CSV</text>
+    <text x="285" y="103" text-anchor="middle" fill="#9aafc4" class="ps">&#x2192;&#160;dataclasses</text>
+
+    <!-- Arrow 2 -->
+    <line x1="365" y1="78" x2="389" y2="78" stroke="#9aafc4" stroke-width="2"/>
+    <polygon points="386,72 397,78 386,84" fill="#9aafc4"/>
+
+    <!-- Box 3: Convert -->
+    <rect x="398" y="34" width="158" height="88" rx="8" fill="#003d78"/>
+    <text x="477" y="69" text-anchor="middle" fill="#ffffff" class="pl">Convert</text>
+    <text x="477" y="87" text-anchor="middle" fill="#9aafc4" class="ps">DataFrame</text>
+    <text x="477" y="103" text-anchor="middle" fill="#9aafc4" class="ps">&#x2192;&#160;BEDGraph / SEG</text>
+
+    <!-- Arrow 3 -->
+    <line x1="557" y1="78" x2="581" y2="78" stroke="#9aafc4" stroke-width="2"/>
+    <polygon points="578,72 589,78 578,84" fill="#9aafc4"/>
+
+    <!-- Box 4: Render -->
+    <rect x="590" y="34" width="158" height="88" rx="8" fill="#003d78"/>
+    <text x="669" y="69" text-anchor="middle" fill="#ffffff" class="pl">Render</text>
+    <text x="669" y="87" text-anchor="middle" fill="#9aafc4" class="ps">str.format()</text>
+    <text x="669" y="103" text-anchor="middle" fill="#9aafc4" class="ps">&#x2192;&#160;HTML file</text>
+
+    <!-- Phase function labels below each box -->
+    <text x="93" y="141" text-anchor="middle" fill="#6b7c8d" class="ps">main()</text>
+    <text x="93" y="157" text-anchor="middle" fill="#6b7c8d" class="ps">argparse.parse_args()</text>
+
+    <text x="285" y="141" text-anchor="middle" fill="#6b7c8d" class="ps">4&#160;&#215;&#160;load_*_data()</text>
+    <text x="285" y="157" text-anchor="middle" fill="#6b7c8d" class="ps">tarfile, CSV, gzip</text>
+
+    <text x="477" y="141" text-anchor="middle" fill="#6b7c8d" class="ps">9&#160;conversion&#160;functions</text>
+    <text x="477" y="157" text-anchor="middle" fill="#6b7c8d" class="ps">iterrows,&#160;math.log2</text>
+
+    <text x="669" y="141" text-anchor="middle" fill="#6b7c8d" class="ps">render_html()</text>
+    <text x="669" y="157" text-anchor="middle" fill="#6b7c8d" class="ps">write_html()</text>
+  </svg>
+  </div>
+  <figcaption>Figure 1 &middot; The four phases of <code>purple_plotter.py</code>. Data flows strictly left to right; no phase revisits a previous one.</figcaption>
+  </figure>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Phase</th>
+        <th>Entry point</th>
+        <th>Inputs</th>
+        <th>Outputs</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Ingest</strong></td>
+        <td><code>main()</code> via <code>argparse</code></td>
+        <td>Command-line argument strings (file paths, sample ID, locus)</td>
+        <td>Populated <code>argparse.Namespace</code>; <code>Path</code> objects passed to loaders</td>
+      </tr>
+      <tr>
+        <td><strong>Load</strong></td>
+        <td><code>load_purple_data()</code>, <code>load_qc_data()</code>, <code>load_msi_data()</code>, <code>load_cnvkit_data()</code></td>
+        <td><code>Path</code> objects (files on disk); <code>None</code> for optional absent files</td>
+        <td><code>PurpleData</code>, <code>QCData</code>, <code>MSIData</code>, <code>CNVkitData</code> dataclass instances holding DataFrames and scalars</td>
+      </tr>
+      <tr>
+        <td><strong>Convert</strong></td>
+        <td>9 conversion functions — e.g. <code>cn_bars_by_state()</code>, <code>baf_bedgraph()</code>, <code>to_seg()</code></td>
+        <td>Pandas DataFrames + ploidy float from <code>QCData</code></td>
+        <td>BEDGraph strings, SEG strings, dicts of per-state BEDGraph strings</td>
+      </tr>
+      <tr>
+        <td><strong>Render</strong></td>
+        <td><code>render_html()</code> &#x2192; <code>write_html()</code></td>
+        <td>All converted strings + <code>PlotInputs</code> metadata</td>
+        <td>Complete HTML string written to <code>{sample_id}.igv.bars.html</code> on disk</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+
+<!-- ── SECTION 03 ────────────────────────────────────────── -->
+<section id="s03">
+  <h2><span class="sec-num">03</span> Data flow</h2>
+
+  <p>The table below traces each data representation from raw CLI strings through to bytes written to disk. Understanding this chain explains why the code is structured the way it is: each stage has exactly one job and passes a well-typed object to the next.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Stage</th>
+        <th>Object / variable</th>
+        <th>Python type</th>
+        <th>Key fields / columns</th>
+        <th>Consumed by</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Raw CLI</td>
+        <td><code>args.*</code></td>
+        <td><code>argparse.Namespace</code></td>
+        <td><code>sample</code>, <code>purple_tar</code>, <code>qc_report</code>, <code>cnvkit_cnr</code>, <code>locus</code>, <code>output_dir</code></td>
+        <td><code>main()</code> passes to load functions</td>
+      </tr>
+      <tr>
+        <td>Assembled inputs</td>
+        <td><code>inputs</code></td>
+        <td><code>PlotInputs</code> dataclass</td>
+        <td><code>sample_id</code>, <code>locus</code>, <code>purple</code>, <code>qc</code>, <code>msi</code>, <code>cnvkit</code></td>
+        <td><code>write_html()</code> &#x2192; <code>render_html()</code></td>
+      </tr>
+      <tr>
+        <td>PURPLE archive</td>
+        <td><code>inputs.purple</code></td>
+        <td><code>PurpleData</code> dataclass</td>
+        <td><code>baf_df</code>, <code>cn_df</code>, <code>seg_df</code> (all <code>pd.DataFrame</code>)</td>
+        <td>Conversion functions in <code>render_html()</code></td>
+      </tr>
+      <tr>
+        <td>QC metadata</td>
+        <td><code>inputs.qc</code></td>
+        <td><code>QCData</code> dataclass</td>
+        <td><code>purity</code>, <code>ploidy</code>, <code>status</code>, <code>loaded</code></td>
+        <td><code>render_html()</code> for header display; <code>ploidy</code> passed to all CN conversions</td>
+      </tr>
+      <tr>
+        <td>MSI result</td>
+        <td><code>inputs.msi</code></td>
+        <td><code>MSIData</code> dataclass</td>
+        <td><code>score_str</code>, <code>status_str</code></td>
+        <td><code>render_html()</code> for header display only; no track data</td>
+      </tr>
+      <tr>
+        <td>CNVkit files</td>
+        <td><code>inputs.cnvkit</code></td>
+        <td><code>CNVkitData</code> dataclass</td>
+        <td><code>cnr_df</code>, <code>cns_df</code>, <code>gm_df</code> (each may be <code>None</code>)</td>
+        <td>Three CNVkit conversion functions in <code>render_html()</code></td>
+      </tr>
+      <tr>
+        <td>BEDGraph strings</td>
+        <td><code>cov_log2_bg</code>, <code>baf_bg</code>, <code>bar_bgs["amp"]</code>, &#x2026;</td>
+        <td><code>str</code></td>
+        <td>Tab-separated lines: <code>chrom\tstart\tend\tvalue</code></td>
+        <td><code>HTML_BARS.format(**kwargs)</code> placeholder substitution</td>
+      </tr>
+      <tr>
+        <td>SEG strings</td>
+        <td><code>seg_data</code>, <code>cnvkit_sns_bg</code></td>
+        <td><code>str</code></td>
+        <td>Header row + tab-separated <code>SampleID / Chromosome / Start / End / Num_Probes / Seg_Mean</code></td>
+        <td><code>HTML_BARS.format(**kwargs)</code> placeholder substitution</td>
+      </tr>
+      <tr>
+        <td>HTML document</td>
+        <td>return value of <code>render_html()</code></td>
+        <td><code>str</code></td>
+        <td>Complete <code>&lt;!DOCTYPE html&gt;</code> document; all data embedded as JS template literals</td>
+        <td><code>write_html()</code> &#x2192; <code>Path.write_text()</code></td>
+      </tr>
+      <tr>
+        <td>Output file</td>
+        <td><code>{sample_id}.igv.bars.html</code></td>
+        <td>File on disk</td>
+        <td>Self-contained; no external data files required to view</td>
+        <td>DNAnexus upload / user opens in browser</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+
+<!-- ── SECTION 04 ────────────────────────────────────────── -->
+<section id="s04">
+  <h2><span class="sec-num">04</span> External dependencies</h2>
+
+  <p>The file imports from two sources: Python's standard library and the single third-party package <strong>pandas</strong>. No other packages are required — not even <code>dxpy</code>, since this script is deliberately kept as a standalone tool that the DNAnexus bash wrapper calls after downloading all inputs.</p>
+
+  <h3>Standard library</h3>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:140px">Module</th>
+        <th>How it is used in this file</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>argparse</code></td>
+        <td>Defines and parses the nine CLI flags (<code>--sample</code>, <code>--purple_tar</code>, <code>--locus</code>, etc.) inside <code>main()</code>; also provides the <code>ap.error()</code> call that enforces the constraint that at least one of <code>--purple_tar</code> or <code>--cnvkit_cnr</code> must be present</td>
+      </tr>
+      <tr>
+        <td><code>gzip</code></td>
+        <td><code>gzip.decompress(bytes)</code> unpacks the AMBER BAF file which is gzip-compressed a second time <em>inside</em> the PURPLE tar archive (production archives use <code>.amber.baf.tsv.gz</code>, creating a double-compressed member)</td>
+      </tr>
+      <tr>
+        <td><code>html</code> (as <code>_html</code>)</td>
+        <td><code>_html.escape()</code> sanitises user-supplied strings — sample ID, QC status, MSI score — before they are written into the HTML and JavaScript sections of the output template</td>
+      </tr>
+      <tr>
+        <td><code>io</code></td>
+        <td><code>io.BytesIO(raw_bytes)</code> wraps decompressed bytes as a file-like object so <code>pd.read_csv()</code> can consume them directly without writing a temporary file to disk</td>
+      </tr>
+      <tr>
+        <td><code>math</code></td>
+        <td><code>math.log2()</code> computes the log&#x2082; ratio used in every copy-number conversion function; <code>math.isfinite()</code> guards against <code>NaN</code> and <code>&#x221e;</code> values in CNVkit data which has <code>-inf</code> for zero-coverage bins</td>
+      </tr>
+      <tr>
+        <td><code>tarfile</code></td>
+        <td><code>tarfile.open(path, "r:gz")</code> opens and inspects the PURPLE <code>.tar.gz</code> archive; <code>tf.getmembers()</code> lists contents; <code>tf.extractfile(member).read()</code> extracts individual files as bytes</td>
+      </tr>
+      <tr>
+        <td><code>dataclasses</code></td>
+        <td>Provides the <code>@dataclass</code> decorator and the <code>field()</code> helper; used in all five data-model classes to auto-generate constructors and to safely define mutable default values</td>
+      </tr>
+      <tr>
+        <td><code>pathlib</code></td>
+        <td><code>Path</code> objects are used throughout for file path construction, <code>.exists()</code> checks, <code>.write_text()</code> for output, and <code>.mkdir(parents=True)</code> to create the output directory</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Third-party</h3>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:120px">Package</th>
+        <th style="width:160px">Version constraint</th>
+        <th>How it is used</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>pandas</code></td>
+        <td>None stated; any recent 1.x or 2.x</td>
+        <td><code>pd.read_csv(path, sep="\t")</code> reads all TSV inputs into DataFrames; <code>DataFrame.iterrows()</code> iterates rows in every conversion function; boolean indexing filters by chromosome; <code>pd.isna()</code> checks for missing QC status; <code>row.get("column", default)</code> handles optional columns in segment files</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+
+<!-- ── SECTION 05 ────────────────────────────────────────── -->
+<section id="s05">
+  <h2><span class="sec-num">05</span> Function inventory</h2>
+
+  <p>All 16 functions and the one module-level template constant, listed in source order with their approximate line range, processing phase, and a one-line statement of purpose. The <code>HTML_BARS</code> constant is listed first as it is defined before the render functions but is referenced by <code>render_html()</code>.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th style="width:110px">Lines (approx.)</th>
+        <th style="width:90px">Phase</th>
+        <th>One-line purpose</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>load_purple_data()</code></td>
+        <td>~62&#x2013;87</td>
+        <td><span class="pill blue">Load</span></td>
+        <td>Opens the PURPLE <code>.tar.gz</code>, extracts BAF / CN / segment TSVs, handles double-gzip on the AMBER BAF member, returns a <code>PurpleData</code></td>
+      </tr>
+      <tr>
+        <td><code>load_qc_data()</code></td>
+        <td>~90&#x2013;100</td>
+        <td><span class="pill blue">Load</span></td>
+        <td>Reads purity, ploidy, and PURPLE QC status from the QC TSV; returns safe defaults if the path is <code>None</code> or the file is absent</td>
+      </tr>
+      <tr>
+        <td><code>load_msi_data()</code></td>
+        <td>~103&#x2013;111</td>
+        <td><span class="pill blue">Load</span></td>
+        <td>Reads <code>msi_score</code> from the MSI TSV, classifies as MSI-H or MSS using the 8.0 threshold, returns defaults if absent</td>
+      </tr>
+      <tr>
+        <td><code>load_cnvkit_data()</code></td>
+        <td>~114&#x2013;126</td>
+        <td><span class="pill blue">Load</span></td>
+        <td>Reads the three optional CNVkit files (<code>.cnr</code>, <code>.call.cns</code>, <code>.genemetrics.csv</code>); stores <code>None</code> in the dataclass for any absent path</td>
+      </tr>
+      <tr>
+        <td><code>coverage_log2_bedgraph()</code></td>
+        <td>~131&#x2013;141</td>
+        <td><span class="pill green">Convert</span></td>
+        <td>Converts PURPLE target-region CN data to log&#x2082;(windowTumorRatio) BEDGraph; skips masked windows and windows with ratio &#x2264;&#x202f;0.05</td>
+      </tr>
+      <tr>
+        <td><code>cn_bars_by_state()</code></td>
+        <td>~144&#x2013;157</td>
+        <td><span class="pill green">Convert</span></td>
+        <td>Converts segments to log&#x2082;(CN/ploidy) BEDGraph partitioned into 5 state-keyed strings (hodel / loss / diploid / gain / amp) by threshold</td>
+      </tr>
+      <tr>
+        <td><code>baf_bedgraph()</code></td>
+        <td>~160&#x2013;170</td>
+        <td><span class="pill green">Convert</span></td>
+        <td>AMBER BAF scatter top arm: <code>tumorBAF &#x2212; 0.5</code> per site; converts 1-based AMBER position to 0-based BEDGraph interval (<code>pos&#x2212;1, pos</code>)</td>
+      </tr>
+      <tr>
+        <td><code>baf_bedgraph_mirror()</code></td>
+        <td>~173&#x2013;182</td>
+        <td><span class="pill green">Convert</span></td>
+        <td>BAF scatter bottom arm: <code>0.5 &#x2212; tumorBAF</code> per site; mirror of <code>baf_bedgraph()</code> to show the symmetric lower allele arm</td>
+      </tr>
+      <tr>
+        <td><code>baf_seg_bars_by_state()</code></td>
+        <td>~185&#x2013;206</td>
+        <td><span class="pill green">Convert</span></td>
+        <td>Fitted BAF segment bars from the segment TSV, split by CN state and mirrored top/bottom; returns a 10-key dict (5 states &#xd7; 2 arms)</td>
+      </tr>
+      <tr>
+        <td><code>to_seg()</code></td>
+        <td>~209&#x2013;222</td>
+        <td><span class="pill green">Convert</span></td>
+        <td>Converts PURPLE <code>segment.tsv</code> to an IGV SEG string; one tab-separated row per segment with log&#x2082;(CN/ploidy) as <code>Seg_Mean</code></td>
+      </tr>
+      <tr>
+        <td><code>cnr_to_bedgraph()</code></td>
+        <td>~225&#x2013;234</td>
+        <td><span class="pill green">Convert</span></td>
+        <td>CNVkit <code>.cnr</code> per-target log&#x2082; ratios to BEDGraph; skips any non-finite (NaN / &#x221e;) values</td>
+      </tr>
+      <tr>
+        <td><code>cns_to_seg()</code></td>
+        <td>~237&#x2013;253</td>
+        <td><span class="pill green">Convert</span></td>
+        <td>CNVkit <code>.call.cns</code> to IGV SEG string; uses integer <code>cn</code> column when available, falls back to raw <code>log2</code> ratio when absent</td>
+      </tr>
+      <tr>
+        <td><code>genemetrics_to_bedgraph()</code></td>
+        <td>~256&#x2013;265</td>
+        <td><span class="pill green">Convert</span></td>
+        <td>CNVkit <code>.genemetrics.csv</code> to BEDGraph of gene-level log&#x2082; values; skips non-finite values</td>
+      </tr>
+      <tr>
+        <td><code>HTML_BARS</code> <em>(constant)</em></td>
+        <td>~270&#x2013;400</td>
+        <td>&#x2014;</td>
+        <td>Module-level string constant: the ~130-line igv.js HTML template with <code>{placeholder}</code> format slots for all 19 data strings and 7 metadata values</td>
+      </tr>
+      <tr>
+        <td><code>render_html()</code></td>
+        <td>~405&#x2013;455</td>
+        <td><span class="pill purple">Render</span></td>
+        <td>Calls all conversion functions, sanitises strings for HTML / JS contexts, fills <code>HTML_BARS.format(**kwargs)</code> with 26 named keyword arguments</td>
+      </tr>
+      <tr>
+        <td><code>write_html()</code></td>
+        <td>~458&#x2013;464</td>
+        <td><span class="pill purple">Render</span></td>
+        <td>Calls <code>render_html()</code>, creates the output directory if needed, writes the HTML string to <code>{sample_id}.igv.bars.html</code></td>
+      </tr>
+      <tr>
+        <td><code>main()</code></td>
+        <td>~469&#x2013;510</td>
+        <td><span class="pill amber">CLI</span></td>
+        <td>Entry point: parses CLI arguments, calls all four loaders, assembles the <code>PlotInputs</code> dataclass, calls <code>write_html()</code>, prints the output path</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+
+<!-- ── SECTION 06 ────────────────────────────────────────── -->
+<section id="s06">
+  <h2><span class="sec-num">06</span> Naming conventions &amp; how to use this series</h2>
+
+  <p>The file uses a small set of consistent suffixes and prefixes throughout. Learning them makes the code predictable to read: given any variable name you can immediately know what it holds.</p>
+
+  <ul>
+    <li><strong>Everything is <code>snake_case</code></strong> &mdash; all functions, variables, parameters, and module-level names follow PEP 8 snake_case without exception.</li>
+    <li><strong><code>*_df</code> suffix marks DataFrames</strong> &mdash; every <code>pandas.DataFrame</code> is named with a <code>_df</code> ending: <code>baf_df</code>, <code>cn_df</code>, <code>seg_df</code>, <code>cnr_df</code>, <code>cns_df</code>, <code>gm_df</code>. Short-lived filtered subsets use <code>sub</code>.</li>
+    <li><strong><code>*_bg</code> suffix marks BEDGraph strings</strong> &mdash; all variables that hold a BEDGraph-format string end in <code>_bg</code>: <code>cov_log2_bg</code>, <code>baf_bg</code>, <code>baf_mir_bg</code>, <code>cnvkit_cnr_bg</code>. Dicts of per-state strings use the plural <code>*_bgs</code>: <code>bar_bgs</code>, <code>baf_bar_bgs</code>.</li>
+    <li><strong><code>Data</code> suffix on dataclass class names</strong> &mdash; <code>PurpleData</code>, <code>QCData</code>, <code>MSIData</code>, <code>CNVkitData</code> all carry the <code>Data</code> suffix. The top-level aggregator is <code>PlotInputs</code> (it holds inputs, not a single data domain).</li>
+    <li><strong>Inner helper function prefix</strong> &mdash; locally-scoped helper functions defined inside a loader use a leading underscore (<code>_read</code> in <code>load_cnvkit_data</code>) or a descriptive name (<code>read_by_suffix</code> in <code>load_purple_data</code>).</li>
+    <li><strong><code>load_</code> prefix on all data-loading functions</strong> &mdash; the four top-level loaders all begin with <code>load_</code>, making them trivially distinguishable from the nine conversion functions and two render functions.</li>
+  </ul>
+
+  <h3>How to use this series</h3>
+  <p>The four parts are designed to be read in order, each building on the previous. Part 1 (this document) is the right starting point if you have never read the file. Parts 3 and 4 are the detailed reference and are best consulted with the source open alongside them.</p>
+
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-head">
+        <div class="card-icon" style="background:var(--accent-soft)">
+          <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+            <rect x="2" y="4" width="16" height="12" rx="2" fill="#003d78" fill-opacity="0.18"/>
+            <line x1="5" y1="8" x2="15" y2="8" stroke="#003d78" stroke-width="1.5"/>
+            <line x1="5" y1="11" x2="12" y2="11" stroke="#003d78" stroke-width="1.5"/>
+          </svg>
+        </div>
+        <div>
+          <div class="card-name">Part 1 &middot; High-level outline</div>
+          <div class="card-sub">This document</div>
+        </div>
+      </div>
+      <p>Purpose of the file, the four-phase pipeline diagram, data-flow trace, full dependency list, function inventory table, and naming conventions.</p>
+      <span class="pill blue">Current</span>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <div class="card-icon" style="background:var(--accent-soft)">
+          <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+            <rect x="3" y="3" width="14" height="14" rx="2" fill="#003d78" fill-opacity="0.18"/>
+            <circle cx="10" cy="10" r="3.5" fill="none" stroke="#003d78" stroke-width="1.5"/>
+            <line x1="10" y1="4" x2="10" y2="7" stroke="#003d78" stroke-width="1.5"/>
+            <line x1="10" y1="13" x2="10" y2="16" stroke="#003d78" stroke-width="1.5"/>
+          </svg>
+        </div>
+        <div>
+          <div class="card-name">Part 2 &middot; Key concepts</div>
+          <div class="card-sub">Language and format fundamentals</div>
+        </div>
+      </div>
+      <p>Python dataclasses, pandas DataFrames and <code>.iterrows()</code>, tarfile / gzip / BytesIO, log&#x2082; ratios, BEDGraph and SEG formats, <code>str.format()</code> brace-escaping, and browser blob URLs.</p>
+      <span class="pill blue">Concepts</span>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <div class="card-icon" style="background:var(--green-soft)">
+          <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+            <polyline points="3,10 7,14 17,6" stroke="#1a6e47" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div>
+          <div class="card-name">Part 3 &middot; Function walkthrough</div>
+          <div class="card-sub">Each of the 16 functions</div>
+        </div>
+      </div>
+      <p>Every function walked through in source order: what it receives, what it produces, which edge cases it handles, and where its output is consumed next in the pipeline.</p>
+      <span class="pill green">Functions</span>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <div class="card-icon" style="background:var(--amber-soft)">
+          <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+            <rect x="3" y="4" width="14" height="12" rx="1" fill="none" stroke="#b35c00" stroke-width="1.5"/>
+            <line x1="6" y1="8.5" x2="14" y2="8.5" stroke="#b35c00" stroke-width="1"/>
+            <line x1="6" y1="11.5" x2="11" y2="11.5" stroke="#b35c00" stroke-width="1"/>
+          </svg>
+        </div>
+        <div>
+          <div class="card-name">Part 4 &middot; Line-by-line reference</div>
+          <div class="card-sub">Dense annotated source listing</div>
+        </div>
+      </div>
+      <p>A complete annotated listing of the source file: every significant line explained in context, edge cases flagged, and design decisions noted inline alongside the code.</p>
+      <span class="pill amber">Reference</span>
+    </div>
+  </div>
+</section>
+
+
+<div class="series-nav">
+  <a href="260623_eggd_purple_plotter_1.html" class="current">1 &middot; High-level outline</a>
+  <a href="260623_eggd_purple_plotter_2.html">2 &middot; Key concepts</a>
+  <a href="260623_eggd_purple_plotter_3.html">3 &middot; Function walkthrough</a>
+  <a href="260623_eggd_purple_plotter_4.html">4 &middot; Line-by-line reference</a>
+</div>
+
+</main>
+</div>
+
+<footer>
+  Part 1 of 4 &middot; eggd_purple_plotter code walkthrough &middot; Joo Wook Ahn &middot; 23 June 2026 &middot; Source: purple_plotter.py. Continues in Part 2.
+</footer>
+
+</body>
+</html>

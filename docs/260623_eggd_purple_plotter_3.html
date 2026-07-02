@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>eggd_purple_plotter — Part 3: Function walkthrough</title>
+<style>
+:root{
+  --ink:#0d1b2a;--ink-soft:#354656;--muted:#6b7c8d;
+  --line:#e0e7ef;--line-strong:#c5d0db;
+  --bg:#f7f9fb;--paper:#ffffff;
+  --accent:#005eb8;--accent-deep:#003d78;--accent-mid:#1a73c4;--accent-soft:#e3edf8;
+  --green:#1a6e47;--green-soft:#e0f0e8;
+  --amber:#b35c00;--amber-soft:#fdf0e0;
+  --red:#9b2335;--red-soft:#fce8ea;
+  --purple:#4b2d8e;--purple-soft:#ede8f8;
+  --shadow:0 1px 3px rgba(13,27,42,.05),0 4px 20px rgba(13,27,42,.08);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--accent-mid);text-decoration:none}
+a:hover{text-decoration:underline}
+.layout{display:grid;grid-template-columns:270px minmax(0,1fr);max-width:1320px;margin:0 auto}
+@media(max-width:860px){.layout{grid-template-columns:1fr}.toc{display:none}}
+main{padding:0 56px 96px;max-width:900px}
+@media(max-width:860px){main{padding:0 24px 64px}}
+h2{font-size:24px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:12px}
+h2 .sec-num{font-size:12px;letter-spacing:.06em;text-transform:uppercase;background:var(--accent);color:#fff;padding:3px 9px;border-radius:999px;font-weight:700;white-space:nowrap}
+h3{font-size:17px;font-weight:700;margin:28px 0 10px;color:var(--ink)}
+h4{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 6px;font-weight:600}
+p{margin-bottom:13px;color:var(--ink-soft)}
+strong{color:var(--ink)}
+ul,ol{margin:0 0 14px;padding-left:22px}
+li{margin:5px 0;color:var(--ink-soft)}
+.toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:28px 24px;background:var(--paper);border-right:1px solid var(--line);font-size:13px}
+.toc-brand{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-deep);margin-bottom:20px;line-height:1.4}
+.toc-section{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:18px 0 6px}
+.toc ul{list-style:none}
+.toc ul li a{display:block;padding:5px 0 5px 16px;color:var(--ink-soft);border-left:2px solid transparent;transition:all .15s;font-size:12.5px;line-height:1.4}
+.toc ul li a:hover{color:var(--accent);border-left-color:var(--accent);text-decoration:none;padding-left:20px}
+.toc .meta{margin-top:22px;padding-top:18px;border-top:1px solid var(--line);font-size:11.5px;color:var(--muted);line-height:1.6}
+.hero{padding:52px 0 36px;border-bottom:1px solid var(--line);margin-bottom:8px}
+.hero .eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:12px}
+.hero h1{font-size:38px;line-height:1.1;letter-spacing:-.015em;font-weight:800;color:var(--ink);margin-bottom:14px;max-width:22ch}
+.hero .sub{font-size:17px;line-height:1.55;color:var(--ink-soft);max-width:64ch}
+.hero .meta-row{display:flex;gap:24px;margin-top:20px;flex-wrap:wrap}
+.hero .meta-item{font-size:12px;color:var(--muted)}
+.hero .meta-item strong{color:var(--ink-soft)}
+section{padding-top:52px}
+section+section{border-top:1px solid var(--line)}
+footer{padding:32px 56px;color:var(--muted);font-size:12px;border-top:1px solid var(--line);max-width:1320px;margin:0 auto;line-height:1.7}
+.callout{border-radius:6px;padding:18px 22px;margin:18px 0;border:1px solid}
+.callout.blue{border-color:#b3cce8;background:var(--accent-soft)}
+.callout.green{border-color:#a8d4bb;background:var(--green-soft)}
+.callout.amber{border-color:#e8c28a;background:var(--amber-soft)}
+.callout .tag{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;margin-bottom:6px}
+.callout.blue .tag{color:var(--accent-deep)}
+.callout.green .tag{color:var(--green)}
+.callout.amber .tag{color:var(--amber)}
+.callout p:last-child{margin:0}
+code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;background:#f0f4f8;padding:2px 6px;border-radius:3px;color:var(--accent-deep)}
+.cb{background:#1e2d3d;border-radius:8px;padding:20px 22px;margin:16px 0;overflow-x:auto}
+.cb pre{color:#cdd9e5;font:13px/1.75 ui-monospace,Menlo,Consolas,monospace;margin:0;white-space:pre}
+.cb .c{color:#6e9cbf}.cb .k{color:#79b8ff}.cb .s{color:#9ecbff}.cb .n{color:#b392f0}.cb .f{color:#85e89d}.cb .t{color:#ffab70}
+.fn-box{border:1px solid var(--line);border-radius:8px;overflow:hidden;margin:0 0 36px}
+.fn-header{background:var(--accent-deep);padding:14px 18px;display:flex;align-items:baseline;gap:16px;flex-wrap:wrap}
+.fn-name{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:15px;color:#fff;font-weight:700}
+.fn-lines{font-size:12px;color:#a8c8e8}
+.fn-phase{font-size:11px;padding:2px 9px;border-radius:999px;font-weight:700;letter-spacing:.04em}
+.fn-phase.p1{background:#b35c00;color:#fff}
+.fn-phase.p2{background:#1a6e47;color:#fff}
+.fn-phase.p3{background:#4b2d8e;color:#fff}
+.fn-phase.p4{background:#9b2335;color:#fff}
+.fn-phase.cli{background:#005eb8;color:#fff}
+.fn-body{padding:18px}
+.fn-body p{margin-bottom:10px}
+.io-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
+.io-box{background:#f7f9fb;border:1px solid var(--line);border-radius:6px;padding:12px}
+.io-box ul{margin:0;padding-left:18px}
+.io-box li{font-size:13px;margin:3px 0}
+.series-nav{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}
+.series-nav a{display:inline-block;padding:6px 14px;border-radius:6px;font-size:12.5px;font-weight:600;border:1px solid var(--line);background:var(--paper);color:var(--ink-soft)}
+.series-nav a.current{background:var(--accent-deep);color:#fff;border-color:var(--accent-deep)}
+.series-nav a:hover{border-color:var(--accent);color:var(--accent);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<aside class="toc">
+  <div class="toc-brand">PERSONAL BRIEFING — EGGD_PURPLE_PLOTTER<br>23 June 2026</div>
+  <div class="toc-section">Data Loading</div>
+  <ul>
+    <li><a href="#section-15">15 · Data loading functions</a></li>
+  </ul>
+  <div class="toc-section">Data Conversion</div>
+  <ul>
+    <li><a href="#section-16">16 · Coverage and CN</a></li>
+    <li><a href="#section-17">17 · BAF conversion</a></li>
+    <li><a href="#section-18">18 · SEG, CNVkit &amp; rendering</a></li>
+  </ul>
+  <div class="meta">Part 3 of 4<br>Function walkthrough</div>
+</aside>
+
+<main>
+
+<header class="hero">
+  <div class="eyebrow">Code walkthrough · DNAnexus · Clinical bioinformatics</div>
+  <h1>eggd_purple_plotter</h1>
+  <p class="sub">A guided walkthrough of the DNAnexus app that converts PURPLE/CNVkit outputs into a self-contained IGV.js HTML viewer. — Part 3 of 4: Function walkthrough</p>
+  <div class="meta-row">
+    <span class="meta-item"><strong>Author</strong> Joo Wook Ahn</span>
+    <span class="meta-item"><strong>Date</strong> 23 June 2026</span>
+  </div>
+</header>
+
+<div class="series-nav">
+  <a href="260623_eggd_purple_plotter_1.html">1 · High-level outline</a>
+  <a href="260623_eggd_purple_plotter_2.html">2 · Key concepts</a>
+  <a href="260623_eggd_purple_plotter_3.html" class="current">3 · Function walkthrough</a>
+  <a href="260623_eggd_purple_plotter_4.html">4 · Line-by-line reference</a>
+</div>
+
+<!-- ── SECTION 15 ─────────────────────────────────────────── -->
+<section id="section-15">
+  <h2><span class="sec-num">15</span> Data loading functions</h2>
+  <p>Four <code>load_*</code> functions each own the job of reading one external file type. They all return typed dataclasses, and all degrade gracefully — returning a default dataclass when a path is absent. This means <code>render_html</code> never needs to check for <code>None</code> on QC, MSI, or CNVkit fields; only the PURPLE data is explicitly optional because the whole module can run without it.</p>
+
+  <div class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">load_purple_data(purple_tar, sample_id)</span>
+      <span class="fn-lines">lines 63–90</span>
+      <span class="fn-phase p1">Load</span>
+    </div>
+    <div class="fn-body">
+      <p>Opens a PURPLE <code>.tar.gz</code> archive and extracts three TSV dataframes: AMBER BAF values, target-region copy-number windows, and PURPLE segments.</p>
+      <div class="io-grid">
+        <div class="io-box">
+          <h4>Inputs</h4>
+          <ul>
+            <li><code>purple_tar</code> — Path to the PURPLE <code>.tar.gz</code> archive</li>
+            <li><code>sample_id</code> — Sample identifier (available for error messages; not used in extraction logic)</li>
+          </ul>
+        </div>
+        <div class="io-box">
+          <h4>Output</h4>
+          <ul>
+            <li><code>PurpleData</code> dataclass with three DataFrames: <code>baf_df</code>, <code>cn_df</code>, <code>seg_df</code></li>
+          </ul>
+        </div>
+      </div>
+      <p>The archive is opened with <code>tarfile.open(…, "r:gz")</code> inside a <code>with</code> block. An inner closure <code>read_by_suffix</code> locates a member by filename suffix, extracts its bytes via <code>tf.extractfile(member).read()</code>, wraps them in a <code>BytesIO</code> object, and returns a pandas DataFrame — no temporary files are written to disk.</p>
+      <p>The BAF file uses a dual-format probe. In production PURPLE tars the <code>.amber.baf.tsv</code> is itself gzip-compressed, producing <strong>double compression</strong>: the tar is gzip-compressed, and this member is also gzip-compressed inside it. The function probes for the <code>.amber.baf.tsv.gz</code> member first; if found, <code>gzip.decompress()</code> handles the inner layer. If absent, the plain <code>.amber.baf.tsv</code> fallback is used.</p>
+      <div class="cb"><pre><span class="c"># Probe for production double-compressed member first</span>
+baf_gz_member = <span class="f">next</span>(
+    (m <span class="k">for</span> m <span class="k">in</span> members <span class="k">if</span> m.name.<span class="f">endswith</span>(<span class="s">".amber.baf.tsv.gz"</span>)), <span class="k">None</span>
+)
+<span class="k">if</span> baf_gz_member <span class="k">is not None</span>:
+    raw    = gzip.<span class="f">decompress</span>(tf.<span class="f">extractfile</span>(baf_gz_member).<span class="f">read</span>())
+    baf_df = pd.<span class="f">read_csv</span>(io.<span class="t">BytesIO</span>(raw), sep=<span class="s">"\t"</span>)
+<span class="k">else</span>:
+    baf_df = <span class="f">read_by_suffix</span>(<span class="s">"amber.baf.tsv"</span>)  <span class="c"># test-fixture fallback</span></pre></div>
+      <div class="callout amber">
+        <span class="tag">Design decision — BAF fallback</span>
+        <p>The plain-<code>.tsv</code> fallback branch exists purely for local testing with lightweight fixtures. Production PURPLE archives always contain the gzip-compressed member. Keeping both paths in the same function means unit tests run the same code path as production — only the inner decompression layer differs.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">load_qc_data(qc_report)</span>
+      <span class="fn-lines">lines 93–102</span>
+      <span class="fn-phase p1">Load</span>
+    </div>
+    <div class="fn-body">
+      <p>Parses purity, ploidy, and QC status from a single-row TSV. Returns <code>QCData()</code> with <code>loaded=False</code> if the path is <code>None</code> or the file does not exist.</p>
+      <div class="io-grid">
+        <div class="io-box">
+          <h4>Inputs</h4>
+          <ul>
+            <li><code>qc_report</code> — Path or <code>None</code></li>
+          </ul>
+        </div>
+        <div class="io-box">
+          <h4>Output</h4>
+          <ul>
+            <li><code>QCData(purity, ploidy, status, loaded)</code></li>
+          </ul>
+        </div>
+      </div>
+      <p>The <code>status</code> cell is tested with <code>pd.isna()</code> rather than a string comparison against <code>"nan"</code>. Pandas reads blank TSV cells as <code>float("nan")</code> — a string comparison would silently fail. The <code>loaded</code> flag is set to <code>True</code> only on a successful read; <code>render_html</code> uses this flag (not the status value) to decide whether to show <code>"?"</code> for purity and ploidy. A QC file with <code>status="UNKNOWN"</code> — valid PURPLE output for borderline samples — still has <code>loaded=True</code> and shows real numeric values.</p>
+    </div>
+  </div>
+
+  <div class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">load_msi_data(msi_report)</span>
+      <span class="fn-lines">lines 105–113</span>
+      <span class="fn-phase p1">Load</span>
+    </div>
+    <div class="fn-body">
+      <p>Reads an MSI score from a TSV and classifies the sample as MSI-H or MSS by applying the constant <code>MSI_THRESHOLD = 8.0</code>. Returns <code>MSIData("?", "?")</code> if the path is <code>None</code> or absent.</p>
+      <div class="io-grid">
+        <div class="io-box">
+          <h4>Inputs</h4>
+          <ul>
+            <li><code>msi_report</code> — Path or <code>None</code></li>
+          </ul>
+        </div>
+        <div class="io-box">
+          <h4>Output</h4>
+          <ul>
+            <li><code>MSIData(score_str, status_str)</code> — e.g. <code>("12.40%", "MSI-H")</code></li>
+          </ul>
+        </div>
+      </div>
+      <p>Both output strings are pre-formatted for direct injection into the HTML header bar, keeping <code>render_html</code> free of any MSI formatting logic. The <code>"?"</code> defaults ensure graceful rendering when the MSI report is not supplied.</p>
+    </div>
+  </div>
+
+  <div class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">load_cnvkit_data(cnr, call_cns, genemetrics)</span>
+      <span class="fn-lines">lines 116–127</span>
+      <span class="fn-phase p1">Load</span>
+    </div>
+    <div class="fn-body">
+      <p>Loads up to three optional CNVkit output files. Any absent or <code>None</code> path yields a <code>None</code> DataFrame in the returned dataclass.</p>
+      <div class="io-grid">
+        <div class="io-box">
+          <h4>Inputs</h4>
+          <ul>
+            <li><code>cnr</code> — Path to <code>.cnr</code> or <code>None</code></li>
+            <li><code>call_cns</code> — Path to <code>.call.cns</code> or <code>None</code></li>
+            <li><code>genemetrics</code> — Path to genemetrics CSV or <code>None</code></li>
+          </ul>
+        </div>
+        <div class="io-box">
+          <h4>Output</h4>
+          <ul>
+            <li><code>CNVkitData(cnr_df, cns_df, gm_df)</code> — any field may be <code>None</code></li>
+          </ul>
+        </div>
+      </div>
+      <p>The inner helper <code>_read(p)</code> consolidates the existence check and TSV read into a single line, removing boilerplate from three identical paths. Because any combination of absent inputs is valid, a caller supplying only <code>--cnvkit_cnr</code> receives a <code>CNVkitData</code> with two <code>None</code> fields — the downstream conversion functions each guard against <code>None</code> before calling their converter.</p>
+    </div>
+  </div>
+
+</section>
+
+<!-- ── SECTION 16 ─────────────────────────────────────────── -->
+<section id="section-16">
+  <h2><span class="sec-num">16</span> Coverage and CN conversion functions</h2>
+  <p>These two functions convert PURPLE's per-window and per-segment copy-number data into BEDGraph strings. The resulting strings are embedded directly as blob URLs in the igv.js configuration — an empty string produces an empty track, which igv.js renders silently with no errors.</p>
+
+  <div class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">coverage_log2_bedgraph(cn_df)</span>
+      <span class="fn-lines">lines 131–142</span>
+      <span class="fn-phase p2">Convert</span>
+    </div>
+    <div class="fn-body">
+      <p>Converts per-window tumor copy-number ratios to log<sub>2</sub> values and returns a chromosome-sorted BEDGraph string for the IGV coverage scatter track.</p>
+      <div class="io-grid">
+        <div class="io-box">
+          <h4>Inputs</h4>
+          <ul>
+            <li><code>cn_df</code> — <code>target_region_cn.tsv</code> DataFrame; key columns: <code>chromosome</code>, <code>windowStart</code>, <code>windowEnd</code>, <code>masked</code>, <code>windowTumorRatio</code></li>
+          </ul>
+        </div>
+        <div class="io-box">
+          <h4>Output</h4>
+          <ul>
+            <li>BEDGraph string — one row per unmasked window where <code>windowTumorRatio &gt; 0.05</code></li>
+          </ul>
+        </div>
+      </div>
+      <p>Iterates chromosomes in <code>CHR_ORDER</code> (chr1–chr22, chrX), filters to unmasked rows with ratio above the noise threshold, and applies <code>math.log2(ratio)</code>. Chromosome-ordered output ensures the BEDGraph is in canonical order for igv.js.</p>
+      <div class="callout blue">
+        <span class="tag">Design decision — 0.05 ratio threshold</span>
+        <p>Windows with ratio ≤ 0.05 are silently discarded. At this depth, ratios are dominated by sequencing noise and would produce extreme negative log<sub>2</sub> values that visually compress the rest of the track. The threshold was chosen empirically to match the noise floor of the coverage display.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">cn_bars_by_state(seg_df, ploidy)</span>
+      <span class="fn-lines">lines 145–159</span>
+      <span class="fn-phase p2">Convert</span>
+    </div>
+    <div class="fn-body">
+      <p>Converts PURPLE segments to log<sub>2</sub>(CN/ploidy) values and distributes them across five CN-state BEDGraph buckets, returning one BEDGraph string per state.</p>
+      <div class="io-grid">
+        <div class="io-box">
+          <h4>Inputs</h4>
+          <ul>
+            <li><code>seg_df</code> — <code>purple.segment.tsv</code> DataFrame</li>
+            <li><code>ploidy</code> — float from QC report (default 2.0)</li>
+          </ul>
+        </div>
+        <div class="io-box">
+          <h4>Output</h4>
+          <ul>
+            <li><code>dict[str, str]</code> with keys <code>"hodel"</code>, <code>"loss"</code>, <code>"diploid"</code>, <code>"gain"</code>, <code>"amp"</code></li>
+          </ul>
+        </div>
+      </div>
+      <p><code>denom = max(ploidy, 0.1)</code> prevents division-by-zero for pathological ploidy values. Buckets are initialised as empty lists using a dict comprehension over <code>CN_STATES</code> tuples; the <code>*_</code> idiom discards the lo/hi/colour fields. Each segment's log<sub>2</sub> ratio is tested against five half-open intervals [lo, hi); <code>break</code> exits the inner loop as soon as a match is found to avoid double-counting at boundaries.</p>
+      <div class="cb"><pre>denom   = <span class="f">max</span>(ploidy, <span class="n">0.1</span>)
+buckets = {key: [] <span class="k">for</span> key, *_ <span class="k">in</span> CN_STATES}
+<span class="k">for</span> chrom <span class="k">in</span> CHR_ORDER:
+    <span class="k">for</span> _, row <span class="k">in</span> seg_df[seg_df[<span class="s">"chromosome"</span>] == chrom].<span class="f">iterrows</span>():
+        cn = <span class="f">float</span>(row.<span class="f">get</span>(<span class="s">"tumorCopyNumber"</span>, <span class="n">0</span>))
+        <span class="k">if</span> cn &lt;= <span class="n">0</span>: <span class="k">continue</span>   <span class="c"># skip uncallable regions</span>
+        log2_r = math.<span class="f">log2</span>(cn / denom)
+        <span class="k">for</span> key, lo, hi, _ <span class="k">in</span> CN_STATES:
+            <span class="k">if</span> lo &lt;= log2_r &lt; hi:
+                buckets[key].<span class="f">append</span>(<span class="f">f</span><span class="s">"{chrom}\t{start}\t{end}\t{log2_r:.4f}"</span>)
+                <span class="k">break</span>
+<span class="k">return</span> {k: <span class="s">"\n"</span>.<span class="f">join</span>(v) <span class="k">for</span> k, v <span class="k">in</span> buckets.<span class="f">items</span>()}</pre></div>
+      <div class="callout green">
+        <span class="tag">Design decision — skip CN ≤ 0</span>
+        <p>Segments with CN ≤ 0 are skipped rather than clamped. PURPLE marks truly uncallable regions as CN=0, and log<sub>2</sub>(0) is undefined. An empty bucket produces an empty BEDGraph string, which becomes an empty blob URL in the HTML — igv.js renders nothing, which is the correct visual result for a sample with no homdels.</p>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ── SECTION 17 ─────────────────────────────────────────── -->
+<section id="section-17">
+  <h2><span class="sec-num">17</span> BAF conversion functions</h2>
+  <p>Three functions convert AMBER BAF data into BEDGraph strings. <code>baf_bedgraph</code> and <code>baf_bedgraph_mirror</code> together produce the raw-site scatter butterfly plot; <code>baf_seg_bars_by_state</code> produces the fitted-segment bars colored by CN state.</p>
+
+  <div class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">baf_bedgraph(baf_df)</span>
+      <span class="fn-lines">lines 162–170</span>
+      <span class="fn-phase p2">Convert</span>
+    </div>
+    <div class="fn-body">
+      <p>Converts each AMBER heterozygous site to a top-arm BAF scatter point by computing <code>tumorBAF − 0.5</code>, placing balanced heterozygous sites at y=0 and loss-of-heterozygosity sites near +0.5.</p>
+      <div class="io-grid">
+        <div class="io-box">
+          <h4>Inputs</h4>
+          <ul>
+            <li><code>baf_df</code> — AMBER BAF DataFrame with columns <code>chromosome</code>, <code>position</code> (1-based), <code>tumorBAF</code></li>
+          </ul>
+        </div>
+        <div class="io-box">
+          <h4>Output</h4>
+          <ul>
+            <li>BEDGraph string (top arm); values in [−0.5, +0.5]; out-of-range BAF silently skipped</li>
+          </ul>
+        </div>
+      </div>
+      <p>AMBER positions are 1-based, so the BEDGraph coordinate conversion is <code>pos−1, pos</code> to produce 0-based half-open intervals of width 1. Only sites with BAF in [0.0, 1.0] are emitted.</p>
+    </div>
+  </div>
+
+  <div class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">baf_bedgraph_mirror(baf_df)</span>
+      <span class="fn-lines">lines 173–181</span>
+      <span class="fn-phase p2">Convert</span>
+    </div>
+    <div class="fn-body">
+      <p>Produces the bottom-arm mirror of <code>baf_bedgraph</code> by computing <code>0.5 − tumorBAF</code>. Together the two functions create a butterfly plot centred on y=0: a balanced heterozygous site contributes a zero-height bar on both arms, while LOH pushes both arms outward symmetrically.</p>
+      <div class="io-grid">
+        <div class="io-box">
+          <h4>Inputs</h4>
+          <ul>
+            <li><code>baf_df</code> — same AMBER BAF DataFrame as <code>baf_bedgraph</code></li>
+          </ul>
+        </div>
+        <div class="io-box">
+          <h4>Output</h4>
+          <ul>
+            <li>BEDGraph string (bottom arm); same filtering as <code>baf_bedgraph</code></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">baf_seg_bars_by_state(seg_df, ploidy)</span>
+      <span class="fn-lines">lines 184–203</span>
+      <span class="fn-phase p2">Convert</span>
+    </div>
+    <div class="fn-body">
+      <p>The most complex conversion function: produces fitted BAF segment bars colored by CN state for both top and bottom arms, returning a 10-key dictionary.</p>
+      <div class="io-grid">
+        <div class="io-box">
+          <h4>Inputs</h4>
+          <ul>
+            <li><code>seg_df</code> — PURPLE segment DataFrame (same as <code>cn_bars_by_state</code>)</li>
+            <li><code>ploidy</code> — float; used only to determine the <em>colour</em> state, not the y-axis height</li>
+          </ul>
+        </div>
+        <div class="io-box">
+          <h4>Output</h4>
+          <ul>
+            <li><code>dict[str, str]</code> — 10 keys: <code>hodel_top</code>, <code>hodel_bot</code>, <code>loss_top</code>, <code>loss_bot</code>, <code>diploid_top</code>, <code>diploid_bot</code>, <code>gain_top</code>, <code>gain_bot</code>, <code>amp_top</code>, <code>amp_bot</code></li>
+          </ul>
+        </div>
+      </div>
+      <p>The bucket dictionary is built with a nested comprehension over <code>CN_STATES</code> and the two arm labels. Each segment's <strong>colour</strong> is determined by log<sub>2</sub>(CN/ploidy) using the same CN_STATES thresholds as <code>cn_bars_by_state</code>. The <strong>bar height</strong> is determined by the fitted BAF: <code>baf−0.5</code> for the top arm, <code>0.5−baf</code> for the bottom. These are independent — a diploid segment with LOH has the same bar height as an amplified segment with the same BAF.</p>
+      <div class="cb"><pre><span class="c"># 10 keys: hodel_top/bot, loss_top/bot, diploid_top/bot, gain_top/bot, amp_top/bot</span>
+buckets = {<span class="f">f</span><span class="s">"{k}_{arm}"</span>: [] <span class="k">for</span> k, *_ <span class="k">in</span> CN_STATES <span class="k">for</span> arm <span class="k">in</span> (<span class="s">"top"</span>, <span class="s">"bot"</span>)}
+...
+baf       = <span class="f">min</span>(<span class="n">1.0</span>, <span class="f">max</span>(<span class="n">0.0</span>, <span class="f">float</span>(row[<span class="s">"tumorBAF"</span>])))  <span class="c"># clamp to [0,1]</span>
+log2_r    = math.<span class="f">log2</span>(cn / denom)             <span class="c"># for CN-state colour only</span>
+state_key = CN_STATES[<span class="n">-1</span>][<span class="n">0</span>]                <span class="c"># default "amp" before scan</span>
+<span class="k">for</span> key, lo, hi, _ <span class="k">in</span> CN_STATES:
+    <span class="k">if</span> lo &lt;= log2_r &lt; hi:
+        state_key = key; <span class="k">break</span>
+buckets[<span class="f">f</span><span class="s">"{state_key}_top"</span>].<span class="f">append</span>(<span class="f">f</span><span class="s">"{chrom}\t{start}\t{end}\t{baf - 0.5:.4f}"</span>)
+buckets[<span class="f">f</span><span class="s">"{state_key}_bot"</span>].<span class="f">append</span>(<span class="f">f</span><span class="s">"{chrom}\t{start}\t{end}\t{0.5 - baf:.4f}"</span>)</pre></div>
+      <div class="callout blue">
+        <span class="tag">Design decision — BAF clamping</span>
+        <p><code>min(1.0, max(0.0, baf))</code> clamps BAF before arithmetic. PURPLE's fitting optimiser can rarely produce a BAF marginally outside [0,1] due to floating-point precision; clamping prevents negative top-arm values or bottom-arm values above 0.5, which would produce visually misleading bars pointing in the wrong direction.</p>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ── SECTION 18 ─────────────────────────────────────────── -->
+<section id="section-18">
+  <h2><span class="sec-num">18</span> SEG, CNVkit, and rendering</h2>
+  <p>The remaining converters produce IGV SEG or BEDGraph strings from PURPLE and CNVkit data. <code>render_html</code> then orchestrates all conversions and fills the HTML template. <code>write_html</code> persists the result, and <code>main</code> is the CLI entry point.</p>
+
+  <div class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">to_seg(seg_df, sample, ploidy)</span>
+      <span class="fn-lines">lines 206–219</span>
+      <span class="fn-phase p2">Convert</span>
+    </div>
+    <div class="fn-body">
+      <p>Converts PURPLE segment data to IGV SEG format with <code>Seg_Mean = log<sub>2</sub>(CN/ploidy)</code>. Segments with CN ≤ 0 are skipped, consistent with <code>cn_bars_by_state</code>.</p>
+      <div class="io-grid">
+        <div class="io-box">
+          <h4>Inputs</h4>
+          <ul>
+            <li><code>seg_df</code> — PURPLE segment DataFrame</li>
+            <li><code>sample</code> — JS-escaped sample ID string</li>
+            <li><code>ploidy</code> — float</li>
+          </ul>
+        </div>
+        <div class="io-box">
+          <h4>Output</h4>
+          <ul>
+            <li>SEG string with header line <code>SampleID…Seg_Mean</code>; <code>Num_Probes</code> filled with <code>"."</code> (SEG convention for calls without probe counts)</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">cnr_to_bedgraph(cnr_df)</span>
+      <span class="fn-lines">lines 222–232</span>
+      <span class="fn-phase p2">Convert</span>
+    </div>
+    <div class="fn-body">
+      <p>Passes per-target CNVkit log<sub>2</sub> ratios directly from the <code>.cnr</code> file into a BEDGraph string. No mathematical transformation is applied — <code>math.isfinite()</code> filters out any NaN or ±Inf values that CNVkit emits at low-coverage targets.</p>
+      <div class="io-grid">
+        <div class="io-box">
+          <h4>Inputs</h4>
+          <ul>
+            <li><code>cnr_df</code> — CNVkit <code>.cnr</code> DataFrame with columns <code>chromosome</code>, <code>start</code>, <code>end</code>, <code>log2</code></li>
+          </ul>
+        </div>
+        <div class="io-box">
+          <h4>Output</h4>
+          <ul>
+            <li>BEDGraph string; NaN and ±Inf rows omitted</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">cns_to_seg(cns_df, sample, ploidy)</span>
+      <span class="fn-lines">lines 235–252</span>
+      <span class="fn-phase p2">Convert</span>
+    </div>
+    <div class="fn-body">
+      <p>Converts CNVkit called segments to IGV SEG format using a two-branch strategy: when the integer <code>cn</code> column is available (≥ 0), computes log<sub>2</sub>(CN/ploidy); otherwise falls back to the raw <code>log2</code> ratio from the file.</p>
+      <div class="io-grid">
+        <div class="io-box">
+          <h4>Inputs</h4>
+          <ul>
+            <li><code>cns_df</code> — CNVkit <code>.call.cns</code> DataFrame</li>
+            <li><code>sample</code> — JS-escaped sample ID</li>
+            <li><code>ploidy</code> — float; used only in the <code>cn</code> branch</li>
+          </ul>
+        </div>
+        <div class="io-box">
+          <h4>Output</h4>
+          <ul>
+            <li>SEG string; sample ID suffixed with <code>_cnvkit</code> so PURPLE and CNVkit segments display as separate rows in igv.js</li>
+          </ul>
+        </div>
+      </div>
+      <div class="cb"><pre>cn = <span class="f">float</span>(row.<span class="f">get</span>(<span class="s">"cn"</span>, <span class="n">-1</span>))        <span class="c"># -1 sentinel if column absent</span>
+<span class="k">if</span> cn &gt;= <span class="n">0</span>:
+    seg_mean = math.<span class="f">log2</span>(<span class="f">max</span>(cn, <span class="n">0.01</span>) / denom)  <span class="c"># max avoids log2(0)</span>
+<span class="k">else</span>:
+    raw = <span class="f">float</span>(row.<span class="f">get</span>(<span class="s">"log2"</span>, <span class="f">float</span>(<span class="s">"nan"</span>)))
+    <span class="k">if not</span> math.<span class="f">isfinite</span>(raw): <span class="k">continue</span>
+    seg_mean = raw</pre></div>
+      <div class="callout amber">
+        <span class="tag">Design decision — homdel floor</span>
+        <p><code>max(cn, 0.01)</code> floors copy number to 0.01 when <code>cn=0</code> (true homdel), giving log<sub>2</sub>(0.01/ploidy) ≈ −7.6 instead of a <code>ValueError</code>. This differs from the PURPLE converter (<code>to_seg</code>) which skips CN=0 entirely — CNVkit explicitly calls homdels as <code>cn=0</code>, so skipping them would silently omit clinically relevant deletions.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">genemetrics_to_bedgraph(gm_df)</span>
+      <span class="fn-lines">lines 255–263</span>
+      <span class="fn-phase p2">Convert</span>
+    </div>
+    <div class="fn-body">
+      <p>The simplest converter: passes per-gene log<sub>2</sub> values from CNVkit genemetrics directly to a BEDGraph, skipping any NaN or Inf entries with <code>math.isfinite()</code>. No transformation is applied.</p>
+      <div class="io-grid">
+        <div class="io-box">
+          <h4>Inputs</h4>
+          <ul>
+            <li><code>gm_df</code> — CNVkit genemetrics DataFrame with <code>chromosome</code>, <code>start</code>, <code>end</code>, <code>log2</code></li>
+          </ul>
+        </div>
+        <div class="io-box">
+          <h4>Output</h4>
+          <ul>
+            <li>BEDGraph string — one bar per gene, NaN/Inf skipped</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">render_html(inputs)</span>
+      <span class="fn-lines">lines 268–316</span>
+      <span class="fn-phase p3">Render</span>
+    </div>
+    <div class="fn-body">
+      <p>The central orchestrator: calls all data-conversion functions, applies context-sensitive escaping to injectable values, and fills the <code>HTML_BARS</code> template with 24+ named keyword arguments to produce the final self-contained HTML string.</p>
+      <div class="io-grid">
+        <div class="io-box">
+          <h4>Inputs</h4>
+          <ul>
+            <li><code>inputs</code> — a fully-populated <code>PlotInputs</code> dataclass</li>
+          </ul>
+        </div>
+        <div class="io-box">
+          <h4>Output</h4>
+          <ul>
+            <li>Complete HTML string — self-contained IGV bars viewer ready to write to disk</li>
+          </ul>
+        </div>
+      </div>
+      <p><strong>Empty-string degradation:</strong> when <code>inputs.purple is None</code>, all PURPLE track variables are set to <code>""</code> using the same dict structure returned by the real converters. The template still receives every named argument; igv.js receives empty blob URLs and renders empty (but structurally present) tracks, keeping the viewer layout identical whether or not PURPLE data was supplied.</p>
+      <p><strong>Three escaping contexts:</strong> the sample ID appears in three places with different quoting rules, so three separate escaped variants are produced.</p>
+      <div class="cb"><pre><span class="c"># JS backtick literal — escape backtick and ${ interpolation</span>
+sample_js   = inputs.sample_id.<span class="f">replace</span>(<span class="s">"`"</span>, <span class="s">"\\`"</span>).<span class="f">replace</span>(<span class="s">"${"</span>, <span class="s">"\\${"</span>)
+<span class="c"># HTML context — &lt;title&gt; and &lt;span&gt; elements</span>
+sample_html = _html.<span class="f">escape</span>(inputs.sample_id)
+<span class="c"># JS double-quoted string — escape backslash then double-quote</span>
+locus_js    = inputs.locus.<span class="f">replace</span>(<span class="s">"\\"</span>, <span class="s">"\\\\"</span>).<span class="f">replace</span>(<span class="s">'"'</span>, <span class="s">'\\"'</span>)</pre></div>
+      <p><strong>QC display:</strong> <code>purity_str</code> and <code>ploidy_str</code> show <code>"?"</code> when <code>inputs.qc.loaded is False</code>. A file returning <code>status="UNKNOWN"</code> still has <code>loaded=True</code> and shows real numeric values, because the question is whether a file was read at all, not whether PURPLE was confident.</p>
+    </div>
+  </div>
+
+  <div class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">write_html(inputs, output_dir)</span>
+      <span class="fn-lines">lines 319–324</span>
+      <span class="fn-phase p3">Render</span>
+    </div>
+    <div class="fn-body">
+      <p>A thin wrapper around <code>render_html</code>: creates the output directory if needed, writes the rendered string to <code>{output_dir}/{sample_id}.igv.bars.html</code>, and returns the output <code>Path</code> for the caller to log.</p>
+    </div>
+  </div>
+
+  <div class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">main()</span>
+      <span class="fn-lines">lines 327–370</span>
+      <span class="fn-phase cli">CLI</span>
+    </div>
+    <div class="fn-body">
+      <p>The argparse entry point: declares 9 optional arguments and 1 required argument (<code>--sample</code>), validates the combination of inputs, then wires all <code>load_*</code> functions into a <code>PlotInputs</code> dataclass and calls <code>write_html</code>.</p>
+      <div class="io-grid">
+        <div class="io-box">
+          <h4>Required</h4>
+          <ul>
+            <li><code>--sample</code> — sample identifier string</li>
+          </ul>
+        </div>
+        <div class="io-box">
+          <h4>Optional (9 args)</h4>
+          <ul>
+            <li><code>--purple_tar</code>, <code>--qc_report</code></li>
+            <li><code>--cnvkit_cnr</code>, <code>--cnvkit_call_cns</code>, <code>--cnvkit_genemetrics</code></li>
+            <li><code>--msi_report</code>, <code>--locus</code>, <code>--output_dir</code></li>
+          </ul>
+        </div>
+      </div>
+      <p>Hard validation: if both <code>--purple_tar</code> and <code>--cnvkit_cnr</code> are absent, <code>ap.error()</code> exits with code 2 and a descriptive message. Using <code>ap.error()</code> rather than raising an exception means argparse's standard exit code 2 ("bad arguments") is emitted — the signal recognised by shell scripts and DNAnexus job wrappers to distinguish user errors from runtime failures.</p>
+    </div>
+  </div>
+
+</section>
+
+<div class="series-nav">
+  <a href="260623_eggd_purple_plotter_1.html">1 · High-level outline</a>
+  <a href="260623_eggd_purple_plotter_2.html">2 · Key concepts</a>
+  <a href="260623_eggd_purple_plotter_3.html" class="current">3 · Function walkthrough</a>
+  <a href="260623_eggd_purple_plotter_4.html">4 · Line-by-line reference</a>
+</div>
+
+</main>
+</div>
+
+<footer>
+  Continued from Part 2 · Part 3 of 4 · eggd_purple_plotter code walkthrough · Joo Wook Ahn · 23 June 2026. Continues in Part 4.
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,5 @@
+chromosome	windowStart	windowEnd	windowTumorRatio	masked
+chr1	1	100000	1.02	0
+chr1	100001	200000	0.98	0
+chr2	1	100000	1.50	0
+chr2	100001	200000	0.03	0

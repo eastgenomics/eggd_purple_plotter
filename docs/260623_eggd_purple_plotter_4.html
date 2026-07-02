@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>eggd_purple_plotter — Part 4: Line-by-line reference</title>
+<style>
+:root{
+  --ink:#0d1b2a;--ink-soft:#354656;--muted:#6b7c8d;
+  --line:#e0e7ef;--line-strong:#c5d0db;
+  --bg:#f7f9fb;--paper:#ffffff;
+  --accent:#005eb8;--accent-deep:#003d78;--accent-mid:#1a73c4;--accent-soft:#e3edf8;
+  --green:#1a6e47;--green-soft:#e0f0e8;
+  --amber:#b35c00;--amber-soft:#fdf0e0;
+  --red:#9b2335;--red-soft:#fce8ea;
+  --purple:#4b2d8e;--purple-soft:#ede8f8;
+  --shadow:0 1px 3px rgba(13,27,42,.05),0 4px 20px rgba(13,27,42,.08);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--accent-mid);text-decoration:none}
+a:hover{text-decoration:underline}
+.layout{display:grid;grid-template-columns:270px minmax(0,1fr);max-width:1320px;margin:0 auto}
+@media(max-width:860px){.layout{grid-template-columns:1fr}.toc{display:none}}
+main{padding:0 56px 96px;max-width:920px}
+@media(max-width:860px){main{padding:0 24px 64px}}
+h2{font-size:24px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:12px}
+h2 .sec-num{font-size:12px;letter-spacing:.06em;text-transform:uppercase;background:var(--accent);color:#fff;padding:3px 9px;border-radius:999px;font-weight:700;white-space:nowrap}
+h3{font-size:17px;font-weight:700;margin:28px 0 10px;color:var(--ink)}
+p{margin-bottom:13px;color:var(--ink-soft)}
+strong{color:var(--ink)}
+ul,ol{margin:0 0 14px;padding-left:22px}
+li{margin:5px 0;color:var(--ink-soft)}
+.toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:28px 24px;background:var(--paper);border-right:1px solid var(--line);font-size:13px}
+.toc-brand{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-deep);margin-bottom:20px;line-height:1.4}
+.toc-section{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:18px 0 6px}
+.toc ul{list-style:none}
+.toc ul li a{display:block;padding:5px 0 5px 16px;color:var(--ink-soft);border-left:2px solid transparent;transition:all .15s;font-size:12.5px;line-height:1.4}
+.toc ul li a:hover{color:var(--accent);border-left-color:var(--accent);text-decoration:none;padding-left:20px}
+.toc .meta{margin-top:22px;padding-top:18px;border-top:1px solid var(--line);font-size:11.5px;color:var(--muted);line-height:1.6}
+.hero{padding:52px 0 36px;border-bottom:1px solid var(--line);margin-bottom:8px}
+.hero .eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:12px}
+.hero h1{font-size:38px;line-height:1.1;letter-spacing:-.015em;font-weight:800;color:var(--ink);margin-bottom:14px;max-width:22ch}
+.hero .sub{font-size:17px;line-height:1.55;color:var(--ink-soft);max-width:64ch}
+.hero .meta-row{display:flex;gap:24px;margin-top:20px;flex-wrap:wrap}
+.hero .meta-item{font-size:12px;color:var(--muted)}
+.hero .meta-item strong{color:var(--ink-soft)}
+section{padding-top:52px}
+section+section{border-top:1px solid var(--line)}
+footer{padding:32px 56px;color:var(--muted);font-size:12px;border-top:1px solid var(--line);max-width:1320px;margin:0 auto;line-height:1.7}
+code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;background:#f0f4f8;padding:2px 6px;border-radius:3px;color:var(--accent-deep)}
+.acb{margin:20px 0 40px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.acb-header{background:var(--accent-deep);padding:10px 16px;display:flex;gap:16px;align-items:baseline;flex-wrap:wrap}
+.acb-fn{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:14px;color:#fff;font-weight:700}
+.acb-desc{font-size:12px;color:#a8c8e8}
+.acb-code{background:#1e2d3d;overflow-x:auto}
+.acb-code pre{color:#cdd9e5;font:12.5px/1.9 ui-monospace,Menlo,Consolas,monospace;margin:0;padding:16px 20px;white-space:pre}
+.acb-annos{border-top:2px solid #2d4a63}
+.anno-row{display:grid;grid-template-columns:44px 1fr;border-bottom:1px solid var(--line)}
+.anno-row:last-child{border-bottom:none}
+.anno-num{background:#f0f4f8;border-right:1px solid var(--line);display:flex;align-items:flex-start;justify-content:center;padding:14px 0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;font-weight:700;color:var(--accent-deep)}
+.anno-txt{padding:12px 16px;font-size:13.5px;color:var(--ink-soft);line-height:1.55}
+.anno-txt strong{color:var(--ink)}
+.anno-txt code{font-size:12.5px}
+.series-nav{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}
+.series-nav a{display:inline-block;padding:6px 14px;border-radius:6px;font-size:12.5px;font-weight:600;border:1px solid var(--line);background:var(--paper);color:var(--ink-soft)}
+.series-nav a.current{background:var(--accent-deep);color:#fff;border-color:var(--accent-deep)}
+.series-nav a:hover{border-color:var(--accent);color:var(--accent);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<aside class="toc">
+  <div class="toc-brand">PERSONAL BRIEFING — EGGD_PURPLE_PLOTTER<br>23 June 2026</div>
+  <div class="toc-section">Annotated Functions</div>
+  <ul>
+    <li><a href="#section-19">19 · load_purple_data</a></li>
+    <li><a href="#section-20">20 · cn_bars_by_state</a></li>
+    <li><a href="#section-21">21 · baf_seg_bars_by_state</a></li>
+    <li><a href="#section-22">22 · render_html</a></li>
+    <li><a href="#section-23">23 · cns_to_seg</a></li>
+  </ul>
+  <div class="meta">Part 4 of 4<br>Line-by-line reference</div>
+</aside>
+
+<main>
+
+<header class="hero">
+  <div class="eyebrow">Code walkthrough · DNAnexus · Clinical bioinformatics</div>
+  <h1>eggd_purple_plotter</h1>
+  <p class="sub">A guided walkthrough of the DNAnexus app that converts PURPLE/CNVkit outputs into a self-contained IGV.js HTML viewer. — Part 4 of 4: Line-by-line reference</p>
+  <div class="meta-row">
+    <span class="meta-item"><strong>Author</strong> Joo Wook Ahn</span>
+    <span class="meta-item"><strong>Date</strong> 23 June 2026</span>
+  </div>
+</header>
+
+<div class="series-nav">
+  <a href="260623_eggd_purple_plotter_1.html">1 · High-level outline</a>
+  <a href="260623_eggd_purple_plotter_2.html">2 · Key concepts</a>
+  <a href="260623_eggd_purple_plotter_3.html">3 · Function walkthrough</a>
+  <a href="260623_eggd_purple_plotter_4.html" class="current">4 · Line-by-line reference</a>
+</div>
+
+<!-- ── SECTION 19 ─────────────────────────────────────────── -->
+<section id="section-19">
+  <h2><span class="sec-num">19</span> load_purple_data</h2>
+  <p>This function handles two non-obvious challenges: reading files out of a compressed archive without writing to disk, and dealing with the double-compression of the BAF file. The numbered markers below highlight the most important lines.</p>
+
+  <div class="acb">
+    <div class="acb-header">
+      <span class="acb-fn">load_purple_data(purple_tar)</span>
+      <span class="acb-desc">Extract three DataFrames from a PURPLE tar.gz archive</span>
+    </div>
+    <div class="acb-code"><pre>def load_purple_data(purple_tar: Path) -&gt; PurpleData:
+    """Extract amber.baf.tsv, target_region_cn.tsv, purple.segment.tsv from tar.gz."""
+    with tarfile.open(purple_tar, "r:gz") as tf:  # &#9312;
+        members = tf.getmembers()                  # &#9313;
+
+        def read_by_suffix(suffix: str) -&gt; pd.DataFrame:  # &#9314;
+            member = next(                                  # &#9315;
+                (m for m in members if m.name.endswith(suffix)), None
+            )
+            if member is None:
+                raise RuntimeError(
+                    f"Could not find *{suffix} in {Path(purple_tar).name}"
+                )
+            return pd.read_csv(                            # &#9316;
+                io.BytesIO(tf.extractfile(member).read()), sep="\t"
+            )
+
+        baf_gz_member = next(                              # &#9317;
+            (m for m in members if m.name.endswith(".amber.baf.tsv.gz")), None
+        )
+        if baf_gz_member is not None:
+            raw    = gzip.decompress(                      # &#9318;
+                tf.extractfile(baf_gz_member).read()
+            )
+            baf_df = pd.read_csv(io.BytesIO(raw), sep="\t")  # &#9319;
+        else:
+            baf_df = read_by_suffix("amber.baf.tsv")
+
+        return PurpleData(
+            baf_df = baf_df,
+            cn_df  = read_by_suffix("target_region_cn.tsv"),
+            seg_df = read_by_suffix("purple.segment.tsv"),
+        )</pre></div>
+    <div class="acb-annos">
+      <div class="anno-row">
+        <div class="anno-num">&#9312;</div>
+        <div class="anno-txt"><strong><code>"r:gz"</code> opens a gzip-compressed tar for reading.</strong> The <code>with</code> block keeps the archive open for all member reads, then closes (and releases the file handle) automatically on exit — even if an exception is raised mid-function.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9313;</div>
+        <div class="anno-txt"><strong>Snapshot the member list once.</strong> <code>getmembers()</code> returns a list of all archive entries. Calling it once and reusing the list is cheaper than rescanning the archive for every lookup — and is necessary because the archive file object does not support random seeks.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9314;</div>
+        <div class="anno-txt"><strong>Inner closure captures <code>tf</code> and <code>members</code> from the enclosing scope.</strong> This is a nested function (closure): it can read <code>tf</code> and <code>members</code> without them being passed as arguments. It exists only inside <code>load_purple_data</code>, keeping the shared extraction logic in one place without exposing it as a module-level helper.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9315;</div>
+        <div class="anno-txt"><strong>Generator + <code>next(…, None)</code> finds the first matching member or returns <code>None</code>.</strong> The generator expression scans lazily, stopping at the first match. The <code>None</code> default means a missing member produces a clean <code>RuntimeError</code> on the next line rather than a cryptic <code>AttributeError</code> from trying to call <code>extractfile(None)</code>.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9316;</div>
+        <div class="anno-txt"><strong>In-memory extraction with <code>BytesIO</code>.</strong> <code>tf.extractfile(member)</code> returns a file-like object; <code>.read()</code> loads all bytes; <code>io.BytesIO(…)</code> wraps them in an object that satisfies pandas' file-reading interface. No temporary file is written to disk — important in a Docker container with a small <code>/tmp</code> partition.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9317;</div>
+        <div class="anno-txt"><strong>Probe for the double-compressed BAF member before trying the plain fallback.</strong> In production, PURPLE tars contain <code>.amber.baf.tsv.gz</code>; test fixtures use plain <code>.amber.baf.tsv</code>. Probing separately avoids a try/except and makes the two code paths explicit and independently readable.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9318;</div>
+        <div class="anno-txt"><strong>Double compression: <code>gzip.decompress</code> handles the inner gzip layer.</strong> The tar file itself is gzip-compressed (handled by <code>"r:gz"</code> in the open call). This specific member is <em>also</em> gzip-compressed. <code>tarfile</code> strips the outer layer; <code>gzip.decompress</code> strips the inner one. Without this call, pandas would receive raw gzip bytes and fail to parse them as TSV.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9319;</div>
+        <div class="anno-txt"><strong>Same <code>BytesIO</code> pattern after decompression.</strong> After <code>gzip.decompress</code> the result is raw bytes (not a file-like object), so <code>io.BytesIO</code> wraps them into the interface pandas expects. This is identical in structure to the <code>read_by_suffix</code> return — consistency makes both paths easy to audit together.</div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ── SECTION 20 ─────────────────────────────────────────── -->
+<section id="section-20">
+  <h2><span class="sec-num">20</span> cn_bars_by_state</h2>
+  <p>This function contains the core CN-state bucketing algorithm used by every bar-chart track in the viewer. Understanding it fully makes <code>baf_seg_bars_by_state</code> (which follows the same pattern) straightforward.</p>
+
+  <div class="acb">
+    <div class="acb-header">
+      <span class="acb-fn">cn_bars_by_state(seg_df, ploidy)</span>
+      <span class="acb-desc">Distribute PURPLE segments into five CN-state BEDGraph buckets</span>
+    </div>
+    <div class="acb-code"><pre>def cn_bars_by_state(seg_df: pd.DataFrame, ploidy: float) -&gt; dict[str, str]:
+    """log2(CN/ploidy) per segment split by CN state — one interval per segment."""
+    denom   = max(ploidy, 0.1)                                  # &#9312;
+    buckets = {key: [] for key, *_ in CN_STATES}                # &#9313;
+    for chrom in CHR_ORDER:                                     # &#9314;
+        for _, row in seg_df[                                   # &#9315;
+            seg_df["chromosome"] == chrom
+        ].iterrows():
+            cn = float(row.get("tumorCopyNumber", 0))           # &#9316;
+            if cn &lt;= 0:                                         # &#9317;
+                continue
+            log2_r = math.log2(cn / denom)
+            start, end = int(row["start"]), int(row["end"])
+            for key, lo, hi, _ in CN_STATES:                   # &#9318;
+                if lo &lt;= log2_r &lt; hi:
+                    buckets[key].append(
+                        f"{chrom}\t{start}\t{end}\t{log2_r:.4f}"
+                    )
+                    break                                        # &#9319;
+    return {k: "\n".join(v) for k, v in buckets.items()}        # &#9320;</pre></div>
+    <div class="acb-annos">
+      <div class="anno-row">
+        <div class="anno-num">&#9312;</div>
+        <div class="anno-txt"><strong>Floor the denominator to prevent division-by-zero.</strong> If <code>ploidy</code> is 0 or negative (which PURPLE should never produce but technically could), dividing by it would raise a <code>ZeroDivisionError</code> or produce <code>-inf</code>. The floor value of 0.1 is far enough from zero to produce meaningful log<sub>2</sub> values without affecting any realistic ploidy estimate.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9313;</div>
+        <div class="anno-txt"><strong>Dict comprehension over CN_STATES; <code>*_</code> discards unneeded tuple fields.</strong> Each tuple in <code>CN_STATES</code> has four elements: <code>(key, lo, hi, colour)</code>. The <code>*_</code> unpacking captures and discards the last three, leaving only <code>key</code>. Each bucket starts as an empty list that accumulates BEDGraph line strings before being joined at the end.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9314;</div>
+        <div class="anno-txt"><strong>Outer loop over <code>CHR_ORDER</code> enforces chromosome sort order.</strong> BEDGraph files are expected to be chromosome-sorted; igv.js may fail to index tracks that are not ordered. Processing chromosomes in the canonical order (chr1–chr22, chrX) guarantees sorted output regardless of how the input DataFrame is ordered.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9315;</div>
+        <div class="anno-txt"><strong>Filter DataFrame before iterating rows.</strong> Filtering to the current chromosome before calling <code>iterrows()</code> reduces the number of Python-level iterations. <code>_</code> discards the pandas integer row index (which is not meaningful here); <code>row</code> is a <code>pd.Series</code> with column names as keys.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9316;</div>
+        <div class="anno-txt"><strong><code>row.get()</code> with default 0 handles missing columns gracefully.</strong> On a <code>pd.Series</code>, <code>.get(key, default)</code> returns the default if the column is absent — useful if a variant of the TSV format omits the CN column. The explicit <code>float()</code> call normalises values that pandas may have read as strings (in mixed-type columns) or as integer 0 (the default).</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9317;</div>
+        <div class="anno-txt"><strong>Skip rather than clamp CN ≤ 0.</strong> PURPLE uses CN=0 for truly uncallable regions where no copy-number estimate is possible. Clamping to a small positive value would create spurious bars in the homdel track. Skipping means the segment contributes nothing — an honest representation of "no data".</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9318;</div>
+        <div class="anno-txt"><strong>Linear scan of CN_STATES uses half-open intervals [lo, hi).</strong> The five states cover the entire real line: hodel (−∞ to −1.0), loss (−1.0 to −0.3), diploid (−0.3 to 0.3), gain (0.3 to 1.0), amp (1.0 to +∞). The final state has <code>hi=1e9</code> acting as a practical infinity. Half-open intervals mean no value falls into a gap between states.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9319;</div>
+        <div class="anno-txt"><strong><code>break</code> after appending prevents double-counting at boundaries.</strong> Without <code>break</code>, a value of exactly 0.3 (gain lower bound) would match both the diploid interval (0.3 is the diploid upper bound) and the gain interval. The half-open definition [lo, hi) already handles this mathematically, but the <code>break</code> exits the loop immediately as a safety measure and a performance micro-optimisation.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9320;</div>
+        <div class="anno-txt"><strong>Join lists into strings; empty buckets produce empty strings.</strong> A bucket with no segments produces <code>""</code> when joined. In <code>render_html</code>, this becomes <code>blob("")</code> — a blob URL pointing to zero bytes — which igv.js accepts as an empty track. This is why a sample with no amplifications still renders correctly: the amp track is present but empty.</div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ── SECTION 21 ─────────────────────────────────────────── -->
+<section id="section-21">
+  <h2><span class="sec-num">21</span> baf_seg_bars_by_state</h2>
+  <p>This function adapts the bucketing algorithm from <code>cn_bars_by_state</code> to produce a mirrored butterfly plot for the fitted BAF track. The key insight is that the CN state determines the <em>colour</em> of each bar, while the BAF value determines the <em>height</em> — these are independent axes.</p>
+
+  <div class="acb">
+    <div class="acb-header">
+      <span class="acb-fn">baf_seg_bars_by_state(seg_df, ploidy)</span>
+      <span class="acb-desc">Fitted BAF bars coloured by CN state, mirrored top and bottom arms (10-key dict)</span>
+    </div>
+    <div class="acb-code"><pre>def baf_seg_bars_by_state(seg_df: pd.DataFrame, ploidy: float) -&gt; dict[str, str]:
+    """Fitted BAF bar chart split by CN state, mirrored top + bottom arms."""
+    denom   = max(ploidy, 0.1)
+    buckets = {                                                 # &#9312;
+        f"{k}_{arm}": []
+        for k, *_ in CN_STATES
+        for arm in ("top", "bot")
+    }
+    for chrom in CHR_ORDER:
+        sub = seg_df[                                          # &#9313;
+            (seg_df["chromosome"] == chrom)
+            &amp; (seg_df["tumorCopyNumber"] &gt; 0)
+            &amp; (seg_df["tumorBAF"] &gt; 0)
+        ]
+        for _, row in sub.iterrows():
+            cn    = float(row["tumorCopyNumber"])
+            baf   = min(1.0, max(0.0, float(row["tumorBAF"])))  # &#9314;
+            start, end = int(row["start"]), int(row["end"])
+            log2_r    = math.log2(cn / denom)                   # &#9315;
+            state_key = CN_STATES[-1][0]                        # &#9316;
+            for key, lo, hi, _ in CN_STATES:
+                if lo &lt;= log2_r &lt; hi:
+                    state_key = key
+                    break
+            buckets[f"{state_key}_top"].append(                 # &#9317;
+                f"{chrom}\t{start}\t{end}\t{baf - 0.5:.4f}"
+            )
+            buckets[f"{state_key}_bot"].append(                 # &#9318;
+                f"{chrom}\t{start}\t{end}\t{0.5 - baf:.4f}"
+            )
+    return {k: "\n".join(v) for k, v in buckets.items()}</pre></div>
+    <div class="acb-annos">
+      <div class="anno-row">
+        <div class="anno-num">&#9312;</div>
+        <div class="anno-txt"><strong>Nested comprehension creates 10 keys.</strong> Iterating over <code>CN_STATES</code> (5 states) and <code>("top", "bot")</code> (2 arms) produces: <code>hodel_top</code>, <code>hodel_bot</code>, <code>loss_top</code>, <code>loss_bot</code>, <code>diploid_top</code>, <code>diploid_bot</code>, <code>gain_top</code>, <code>gain_bot</code>, <code>amp_top</code>, <code>amp_bot</code>. <code>render_html</code> only uses 8 of these (diploid top/bot are computed but not placed in the template — diploid BAF bars at y≈0 are visually invisible and omitted by design).</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9313;</div>
+        <div class="anno-txt"><strong>Combined boolean filter excludes uninformative segments in one step.</strong> Segments with <code>tumorCopyNumber ≤ 0</code> are excluded because log<sub>2</sub>(0) is undefined. Segments with <code>tumorBAF ≤ 0</code> are excluded because BAF=0 cannot represent a heterozygous site — it typically marks a region where AMBER found no informative SNPs. Note the pandas <code>&amp;</code> operator (not Python's <code>and</code>) is required for element-wise boolean operations on Series.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9314;</div>
+        <div class="anno-txt"><strong><code>min(1.0, max(0.0, baf))</code> clamps BAF to a valid range before arithmetic.</strong> PURPLE's fitting optimiser minimises a continuous likelihood function and can occasionally produce a BAF marginally outside [0, 1] due to floating-point precision. Without clamping, <code>baf - 0.5</code> could exceed 0.5 (top bar extending past the track boundary) or <code>0.5 - baf</code> could go negative (bottom bar pointing upward). Either would produce visually confusing output in igv.js.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9315;</div>
+        <div class="anno-txt"><strong>log<sub>2</sub> is computed for colour determination only, not for bar height.</strong> The y-axis position of each bar is entirely driven by the BAF value. The log<sub>2</sub>(CN/ploidy) value is used only to look up which CN-state colour bucket the segment belongs to. This separates the two visual channels: colour encodes copy-number state; height encodes allelic balance.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9316;</div>
+        <div class="anno-txt"><strong>Default <code>state_key</code> to the last state before the scan.</strong> <code>CN_STATES[-1][0]</code> is <code>"amp"</code>. Setting it as the default before the loop means the variable is always assigned even if the loop completes without a <code>break</code> — which can happen if <code>log2_r</code> is exactly at the amp lower bound (1.0) and floating-point comparison resolves unexpectedly. This is a defensive default rather than a real edge case.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9317;</div>
+        <div class="anno-txt"><strong>Top arm: positive value extends the bar upward from y=0.</strong> For a segment with BAF=0.72 (mild LOH), <code>baf - 0.5 = 0.22</code> — the bar extends 0.22 units above the baseline. For a balanced segment (BAF=0.5), <code>baf - 0.5 = 0.0</code> — the bar is a zero-height point, invisible in the track.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9318;</div>
+        <div class="anno-txt"><strong>Bottom arm: mirror image at <code>0.5 - baf</code> extends downward.</strong> For BAF=0.72, <code>0.5 - 0.72 = -0.22</code> — the bar extends 0.22 units below the baseline. Together the top and bottom bars for the same segment are symmetric about y=0, creating the characteristic butterfly pattern that makes LOH visually obvious in a genome-wide view.</div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ── SECTION 22 ─────────────────────────────────────────── -->
+<section id="section-22">
+  <h2><span class="sec-num">22</span> render_html</h2>
+  <p>This is the orchestrator function. The most important non-obvious lines involve the three different escaping strategies applied to the same sample ID string before it is injected into three different syntactic contexts in the HTML/JavaScript template.</p>
+
+  <div class="acb">
+    <div class="acb-header">
+      <span class="acb-fn">render_html(inputs)</span>
+      <span class="acb-desc">Calls all conversion functions and fills the HTML_BARS template; annotated excerpt shown</span>
+    </div>
+    <div class="acb-code"><pre>def render_html(inputs: "PlotInputs") -&gt; str:
+    """Fill HTML_BARS template from PlotInputs. Empty strings → empty blob URLs."""
+    ploidy = inputs.qc.ploidy
+
+    sample_js = (                                              # &#9312;
+        inputs.sample_id
+        .replace("`", "\\`")
+        .replace("${", "\\${")
+    )
+
+    if inputs.purple is not None:                              # &#9313;
+        cov_log2_bg = coverage_log2_bedgraph(inputs.purple.cn_df)
+        bar_bgs     = cn_bars_by_state(inputs.purple.seg_df, ploidy)
+        baf_bg      = baf_bedgraph(inputs.purple.baf_df)
+        baf_mir_bg  = baf_bedgraph_mirror(inputs.purple.baf_df)
+        baf_bar_bgs = baf_seg_bars_by_state(inputs.purple.seg_df, ploidy)
+        seg_data    = to_seg(inputs.purple.seg_df, sample_js, ploidy)
+    else:
+        cov_log2_bg = ""
+        bar_bgs     = {k: "" for k, *_ in CN_STATES}          # &#9314;
+        baf_bg = baf_mir_bg = seg_data = ""
+        baf_bar_bgs = {
+            f"{k}_{arm}": ""
+            for k, *_ in CN_STATES for arm in ("top", "bot")
+        }
+    ...
+    purity_str = (                                             # &#9315;
+        "?" if not inputs.qc.loaded
+        else f"{inputs.qc.purity:.0%}"
+    )
+    ploidy_str = (
+        "?" if not inputs.qc.loaded
+        else f"{inputs.qc.ploidy:.2f}"
+    )
+    sample_html = _html.escape(inputs.sample_id)              # &#9316;
+    locus_js    = (                                           # &#9317;
+        inputs.locus
+        .replace("\\", "\\\\")
+        .replace('"', '\\"')
+    )
+    return HTML_BARS.format(
+        sample=sample_html, purity=purity_str, ploidy=ploidy_str,
+        ...  # 20+ further named kwargs
+    )</pre></div>
+    <div class="acb-annos">
+      <div class="anno-row">
+        <div class="anno-num">&#9312;</div>
+        <div class="anno-txt"><strong><code>sample_js</code> — escaping for JavaScript backtick template literals.</strong> In the HTML template, sample_id lands inside JS strings delimited by backticks: <code>const segData = `...{sample}_cnvkit...`</code>. A literal backtick in the sample ID would prematurely end the JS string. A <code>${</code> sequence would trigger JS template interpolation and produce a <code>ReferenceError</code>. Both are escaped by prepending a backslash, which JavaScript's backtick strings treat as a literal character.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9313;</div>
+        <div class="anno-txt"><strong>The entire PURPLE conversion block is guarded by <code>inputs.purple is not None</code>.</strong> If no <code>--purple_tar</code> was supplied, every PURPLE-derived variable is set to an empty string instead of being computed. This is the "empty-string degradation" design: the template format call below receives identically-named arguments regardless of whether PURPLE data is present, so the template itself has no conditional logic.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9314;</div>
+        <div class="anno-txt"><strong>The else branch creates the same dict structure as the real converters, but all-empty.</strong> <code>cn_bars_by_state</code> returns <code>{"hodel": "...", "loss": "...", ...}</code>. The else branch produces <code>{"hodel": "", "loss": "", ...}</code>. Downstream code accesses <code>bar_bgs["amp"]</code>, <code>bar_bgs["gain"]</code> etc. identically in both cases — no special-casing required.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9315;</div>
+        <div class="anno-txt"><strong><code>purity_str</code> uses the <code>loaded</code> flag, not the status string.</strong> A QC file can have <code>status="UNKNOWN"</code> (valid PURPLE output for samples where the purity fitting was inconclusive) — but it was still successfully read, so <code>loaded=True</code>. Using <code>loaded</code> correctly shows real numeric purity and ploidy for UNKNOWN-status samples. If the file was absent, <code>loaded=False</code> and both fields show <code>"?"</code>.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9316;</div>
+        <div class="anno-txt"><strong><code>sample_html</code> — escaping for HTML element content and attributes.</strong> <code>_html.escape()</code> converts <code>&lt;</code>, <code>&gt;</code>, <code>&amp;</code>, and <code>"</code> to their HTML entity equivalents. This prevents sample IDs containing angle brackets or ampersands from breaking the HTML structure. A separate variable is needed because HTML escaping rules differ from JavaScript escaping rules — the same escaping cannot be used for both contexts.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9317;</div>
+        <div class="anno-txt"><strong><code>locus_js</code> — escaping for a JavaScript double-quoted string.</strong> In the template, locus lands inside: <code>locus: "{locus}"</code>. A <code>"</code> in the locus string would close the JS string early. Backslashes must be escaped <em>first</em> (before double-quotes) to avoid double-escaping: if a locus were <code>chr1:1-2"</code>, processing double-quotes first then backslashes would incorrectly escape the newly-inserted backslash.</div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ── SECTION 23 ─────────────────────────────────────────── -->
+<section id="section-23">
+  <h2><span class="sec-num">23</span> cns_to_seg</h2>
+  <p>This function is subtler than it appears. The two-branch CN logic exists because CNVkit explicitly represents homdels as <code>cn=0</code> — which is a valid and clinically important call — whereas PURPLE's converter skips CN=0 entirely. Getting this right requires a specific numeric floor rather than a simple skip.</p>
+
+  <div class="acb">
+    <div class="acb-header">
+      <span class="acb-fn">cns_to_seg(cns_df, sample, ploidy)</span>
+      <span class="acb-desc">CNVkit .call.cns to IGV SEG; two-branch logic for integer cn vs raw log2</span>
+    </div>
+    <div class="acb-code"><pre>def cns_to_seg(cns_df: pd.DataFrame, sample: str, ploidy: float) -&gt; str:
+    """CNVkit .call.cns → IGV SEG (log2(CN/ploidy), or raw log2 if cn absent)."""
+    denom = max(ploidy, 0.1)
+    lines = [                                                   # &#9312;
+        "SampleID\tChromosome\tStart\tEnd\tNum_Probes\tSeg_Mean"
+    ]
+    for chrom in CHR_ORDER:
+        for _, row in cns_df[cns_df["chromosome"] == chrom].iterrows():
+            cn = float(row.get("cn", -1))                      # &#9313;
+            if cn &gt;= 0:
+                seg_mean = math.log2(max(cn, 0.01) / denom)    # &#9314;
+            else:
+                raw = float(row.get("log2", float("nan")))     # &#9315;
+                if not math.isfinite(raw):                     # &#9316;
+                    continue
+                seg_mean = raw
+            lines.append(
+                f"{sample}_cnvkit"                             # &#9317;
+                f"\t{chrom}\t{int(row['start'])}\t{int(row['end'])}"
+                f"\t{int(row.get('probes', 0))}\t{seg_mean:.4f}"
+            )
+    return "\n".join(lines)</pre></div>
+    <div class="acb-annos">
+      <div class="anno-row">
+        <div class="anno-num">&#9312;</div>
+        <div class="anno-txt"><strong>The SEG header line is required by the format specification.</strong> igv.js uses the exact column names <code>SampleID</code>, <code>Chromosome</code>, <code>Start</code>, <code>End</code>, <code>Num_Probes</code>, <code>Seg_Mean</code> to identify the file as SEG format and to determine which column to use for colouring. An absent or differently-named header causes igv.js to misparse or refuse the file silently.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9313;</div>
+        <div class="anno-txt"><strong><code>row.get("cn", -1)</code> uses −1 as a sentinel for "absent or uncalled".</strong> CNVkit <code>.call.cns</code> files always have a <code>cn</code> column, but it may contain −1 for segments where the caller could not assign an integer copy number. The <code>-1</code> sentinel ensures the else-branch (raw log<sub>2</sub> fallback) is taken for these rows; using <code>None</code> would not work because <code>float(None)</code> raises a <code>TypeError</code>.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9314;</div>
+        <div class="anno-txt"><strong><code>max(cn, 0.01)</code> floors copy number to 0.01 to preserve homdel calls.</strong> When CNVkit calls a true homozygous deletion, it sets <code>cn=0</code>. Without the floor, <code>math.log2(0)</code> would raise a <code>ValueError</code>. With the floor: <code>log2(0.01 / 2.0) ≈ −7.6</code> — a strongly negative value that renders as a deep red bar in igv.js, which is the correct visual signal for a homdel. By contrast, the PURPLE converter (<code>to_seg</code>) skips CN=0 because PURPLE marks truly uncallable regions as CN=0, not confirmed homdels.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9315;</div>
+        <div class="anno-txt"><strong>Fallback to the raw <code>log2</code> column when <code>cn</code> is absent or −1.</strong> Older CNVkit output files or CNVkit runs without the <code>call</code> step may lack integer CN calls entirely. The raw log<sub>2</sub> ratio is a valid track value for igv.js — it just will not be normalised to ploidy because ploidy information was not applied during the CNVkit call step.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9316;</div>
+        <div class="anno-txt"><strong><code>math.isfinite(raw)</code> skips rows with NaN or ±Inf log<sub>2</sub> values.</strong> CNVkit emits NaN at chromosome ends and centromeres where read depth cannot be estimated, and ±Inf at windows with zero reference depth. These are not errors — they are honest "no data" signals. Skipping rather than clamping means igv.js receives no bar for those regions, which is visually correct.</div>
+      </div>
+      <div class="anno-row">
+        <div class="anno-num">&#9317;</div>
+        <div class="anno-txt"><strong>The <code>_cnvkit</code> suffix distinguishes CNVkit segments from PURPLE segments in igv.js.</strong> Both PURPLE and CNVkit segments are loaded as separate <code>const</code> variables in the template and fed to separate igv.js tracks. If both used the same sample ID in their SEG data, igv.js would merge them into a single row in the seg track display, making it impossible to visually distinguish the two callers.</div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<div class="series-nav">
+  <a href="260623_eggd_purple_plotter_1.html">1 · High-level outline</a>
+  <a href="260623_eggd_purple_plotter_2.html">2 · Key concepts</a>
+  <a href="260623_eggd_purple_plotter_3.html">3 · Function walkthrough</a>
+  <a href="260623_eggd_purple_plotter_4.html" class="current">4 · Line-by-line reference</a>
+</div>
+
+</main>
+</div>
+
+<footer>
+  Continued from Part 3 · Part 4 of 4 · eggd_purple_plotter code walkthrough · Joo Wook Ahn · 23 June 2026 · Source: purple_plotter.py
+</footer>
+
+</body>
+</html>

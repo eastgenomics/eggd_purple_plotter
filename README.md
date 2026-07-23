@@ -89,7 +89,7 @@ open /tmp/26134S0005.igv.bars.html
 ### Run on DNAnexus
 
 ```bash
-# Build
+# Build (dev/test — creates a fast-iterating applet in a single project)
 dx build eggd_purple_plotter/ \
     --destination "project-xxxx:/applets/" --overwrite
 
@@ -100,6 +100,15 @@ dx run applet-xxxx \
     -iqc_report="project-xxxx:file-bbb" \
     --destination "project-xxxx:/igv_plots/" \
     --priority high --watch
+```
+
+For a release, build and publish the actual **app** object instead — an applet
+build is dev-only and is not what end users run:
+
+```bash
+dx build --app                       # -> app-xxxx
+dx publish app-xxxx                  # makes it available to authorizedUsers
+dx run app-eggd_purple_plotter ...    # same -i args as above
 ```
 
 ---

@@ -187,3 +187,10 @@ A 4-part annotated HTML walkthrough of `purple_plotter.py` is in [`docs/`](docs/
 | Instance | `mem1_ssd1_v2_x2` |
 | igv.js | 3.8.3 (CDN) |
 | Genome build | hg38 |
+
+## Sharing outputs by URL
+
+Finished sample HTML outputs can optionally be published to a private S3 bucket fronted
+by CloudFront so they can be shared with others by URL, outside of DNAnexus. See
+[`DEPLOYMENT.md`](DEPLOYMENT.md) for the live URL, resource names, and how to publish a
+new sample.

@@ -128,3 +128,11 @@ def test_cli_all_inputs(tmp_path):
     html = (tmp_path / "S004.igv.bars.html").read_text()
     assert "79%" in html      # purity
     assert "3.42%" in html    # MSI score
+
+
+def test_render_html_prunes_tracks_with_no_data():
+    """igv.js aborts createBrowser on an empty SEG file; empty-data tracks must be dropped."""
+    html = render_html(PlotInputs(sample_id="S001"))
+    assert "function pruneTracks(" in html
+    assert "tracks: pruneTracks([" in html
+    assert "emptyBlobs.add(url)" in html

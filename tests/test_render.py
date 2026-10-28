@@ -154,12 +154,20 @@ const ctx = {
 ctx.window = ctx;
 require("vm").runInNewContext(scripts.join("\n"), ctx);
 const flat = (t) => (t.tracks || [t]).map(c => ({ empty: !texts[c.url].trim() }));
-process.stdout.write(JSON.stringify(cfg.tracks.map(t => ({ name: t.name, children: flat(t) }))));
+const nonempty = Object.values(texts).filter(t => t.trim()).length;
+process.stdout.write(JSON.stringify({
+  nonempty,
+  tracks: cfg.tracks.map(t => ({ name: t.name, children: flat(t) })),
+}));
 """
 
 
 def _tracks_for(tmp_path, **kw):
-    """Render, run the page script under node with igv stubbed, return [{name, children:[{empty}]}]."""
+    """Render, run the page script under node with igv stubbed.
+
+    Returns [{name, children:[{empty}]}]. Also asserts every non-empty data blob
+    ends up in exactly one surviving track/child (nothing populated is dropped).
+    """
     node = shutil.which("node")
     if node is None:
         pytest.skip("node not available")
@@ -167,7 +175,10 @@ def _tracks_for(tmp_path, **kw):
     harness = tmp_path / "harness.js"
     harness.write_text(HARNESS)
     res = subprocess.run([node, str(harness), str(out)], capture_output=True, text=True, check=True)  # nosec B603
-    return json.loads(res.stdout)
+    parsed = json.loads(res.stdout)
+    kept = sum(len(t["children"]) for t in parsed["tracks"])
+    assert kept == parsed["nonempty"], f"{kept} tracks kept but {parsed['nonempty']} blobs have data"
+    return parsed["tracks"]
 
 
 def _purple(tmp_path):
@@ -209,3 +220,4 @@ def test_full_inputs_keep_all_tracks(tmp_path):
         FIXTURES / "sample.cnr", FIXTURES / "sample.call.cns", FIXTURES / "sample.genemetrics.csv"))
     _assert_no_empty_tracks(tracks)
     assert len(tracks) == 7
+    assert sum(len(t["children"]) for t in tracks) > 7   # merged tracks keep their several children

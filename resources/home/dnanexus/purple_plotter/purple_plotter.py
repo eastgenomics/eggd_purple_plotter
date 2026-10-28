@@ -357,8 +357,24 @@ const cnvkitSnsBg        = `{cnvkit_sns_bg}`;
 const cnvkitGenemetricsBg = `{cnvkit_gm_bg}`;
 const segData            = `{seg_data}`;
 
+// Blob URLs whose data is empty (input not supplied). igv.js throws while
+// parsing an empty SEG file and aborts createBrowser, leaving a blank viewer,
+// so tracks backed by empty data are removed before the browser is created.
+const emptyBlobs = new Set();
 function blob(txt) {{
-  return URL.createObjectURL(new Blob([txt], {{ type: "text/plain" }}));
+  const url = URL.createObjectURL(new Blob([txt], {{ type: "text/plain" }}));
+  if (!txt.trim()) emptyBlobs.add(url);
+  return url;
+}}
+
+function pruneTracks(list) {{
+  return list.map(function (t) {{
+    if (t.tracks) {{
+      const kept = t.tracks.filter(function (c) {{ return !emptyBlobs.has(c.url); }});
+      return kept.length ? Object.assign({{}}, t, {{ tracks: kept }}) : null;
+    }}
+    return emptyBlobs.has(t.url) ? null : t;
+  }}).filter(Boolean);
 }}
 
 igv.createBrowser(document.getElementById("igv-div"), {{
@@ -366,7 +382,7 @@ igv.createBrowser(document.getElementById("igv-div"), {{
   locus:     "{locus}",
   showRuler: true,
   showCursorTrackingGuide: true,
-  tracks: [
+  tracks: pruneTracks([
 
     // ── 1. Coverage scatter + CN log₂ bars ──────────────────────────────────
     {{
@@ -451,7 +467,7 @@ igv.createBrowser(document.getElementById("igv-div"), {{
       ],
     }},
 
-  ],
+  ]),
 }});
 </script>
 </body>

@@ -492,16 +492,22 @@ const ppSampleFile = "{sample_file}";
 
 // Exported images carry the sample ID, purity/ploidy/status and MSI banner from
 // the page header, so an image is never separated from the sample it shows.
-// Break txt into lines of at most `max` characters, at spaces where possible and
-// hard-splitting tokens longer than a line, so long sample IDs are never clipped.
-function ppWrap(txt, max) {{
+// Break txt into lines whose rendered width (measured with the same font the SVG
+// text uses) fits in `maxPx`, at spaces where possible, hard-splitting any single
+// token that is wider than a line, so long sample IDs are never clipped.
+function ppWrap(txt, font, maxPx) {{
+  const ctx = document.createElement("canvas").getContext("2d");
+  ctx.font = font;
+  const fits = function (t) {{ return ctx.measureText(t).width * 1.05 <= maxPx; }};   // 5% safety for font fallback
   const lines = []; let cur = "";
   txt.split(" ").forEach(function (word) {{
-    while (word.length > max) {{
+    while (!fits(word) && word.length > 1) {{
       if (cur) {{ lines.push(cur); cur = ""; }}
-      lines.push(word.slice(0, max)); word = word.slice(max);
+      let n = word.length - 1;
+      while (n > 1 && !fits(word.slice(0, n))) n--;
+      lines.push(word.slice(0, n)); word = word.slice(n);
     }}
-    if (cur && (cur + " " + word).length > max) {{ lines.push(cur); cur = word; }}
+    if (cur && !fits(cur + " " + word)) {{ lines.push(cur); cur = word; }}
     else cur = cur ? cur + " " + word : word;
   }});
   if (cur) lines.push(cur);
@@ -515,10 +521,14 @@ function ppSvg() {{
   const root = doc.documentElement;
   const [w, h] = ppSvgSize(root);
   const clean = function (sel) {{ return document.querySelector(sel).textContent.replace(/\\s+/g, " ").trim(); }};
-  // average glyph width as a fraction of font size; bold capitals/digits are wide, so be generous
-  const perLine = function (size, k) {{ return Math.max(10, Math.floor((w - 24) / (size * k))); }};
-  const title = ppWrap(clean("#hdr .ttl"),  perLine(14, 0.8));
-  const meta  = ppWrap(clean("#hdr .meta"), perLine(12, 0.66));
+  // The IGV SVG has ruler coordinates but not its navigation bar, so state the genome and
+  // locus explicitly: an image must identify what it shows once detached from its filename.
+  const loci = window.igvBrowser.currentLoci && window.igvBrowser.currentLoci();
+  const where = "Genome hg38 \u00b7 Locus: " + (Array.isArray(loci) ? loci.join(" | ") : (loci || "all"));
+  const FONT = "Arial, sans-serif", maxPx = w - 24;
+  const title = ppWrap(clean("#hdr .ttl"),  "bold 14px " + FONT, maxPx);
+  const meta  = ppWrap(clean("#hdr .meta"), "12px " + FONT,      maxPx)
+                  .concat(ppWrap(where,     "12px " + FONT,      maxPx));
   const BANNER = 8 + title.length * 18 + meta.length * 16 + 4;
 
   const body = doc.createElementNS(NS, "g");
@@ -533,7 +543,7 @@ function ppSvg() {{
     lines.forEach(function (txt) {{
       y += step;
       const t = doc.createElementNS(NS, "text");
-      [["x", 12], ["y", y - 4], ["font-family", "Arial, sans-serif"], ["font-size", size],
+      [["x", 12], ["y", y - 4], ["font-family", FONT], ["font-size", size],
        ["font-weight", weight], ["fill", fill]].forEach(function (kv) {{ t.setAttribute(kv[0], kv[1]); }});
       t.textContent = txt;
       root.appendChild(t);

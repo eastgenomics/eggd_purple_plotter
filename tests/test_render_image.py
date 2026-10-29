@@ -67,6 +67,7 @@ def test_render_genome_image_writes_labelled_svg_and_png(viewer):
     assert svg_text.lstrip().startswith("<svg")
     assert "IMG_TEST" in svg_text and "Purity 79%" in svg_text   # sample banner present
     assert ">X<" in svg_text and ">Y<" in svg_text               # whole-genome ruler, not a single locus
+    assert "CNVkit" in svg_text                                  # track content, not just the banner
     data = png.read_bytes()
     assert data[:8] == b"\x89PNG\r\n\x1a\n"
     width = int.from_bytes(data[16:20], "big")
@@ -94,19 +95,48 @@ def test_gene_name_initial_locus_does_not_need_network(tmp_path_factory):
     assert ">X<" in svg.read_text()          # whole-genome ruler
 
 
-def test_long_sample_id_is_wrapped_inside_the_image(tmp_path_factory):
+@pytest.mark.parametrize("sid", [
+    "S" + "-".join(f"{i:04d}ABCDEFGH" for i in range(20)),     # long, breakable at hyphens only
+    "W" * 140,                                                  # one very wide unbreakable token
+])
+def test_long_sample_id_is_wrapped_inside_the_image(tmp_path_factory, sid):
+    """Every banner line, measured as rendered by Chromium, must fit inside the image width."""
     exe = _skip_unless_browser()
+    from playwright.sync_api import sync_playwright
     out = tmp_path_factory.mktemp("long")
-    sid = "S" + "-".join(f"{i:04d}ABCDEFGH" for i in range(20))      # ~260 chars, > one line
-    html = out / "page.html"                    # sid is longer than a filename may be
+    html = out / "page.html"                    # sid may be longer than a filename may be
     html.write_text(render_html(PlotInputs(sample_id=sid, cnvkit=load_cnvkit_data(FIXTURES / "sample.cnr", None, None))))
     svg, _png = render_image.render_genome_image(html, out / "l", chromium_path=exe)
     text = svg.read_text()
-    import re
-    texts = re.findall(r"<text[^>]*font-family=\"Arial, sans-serif\"[^>]*>([^<]*)</text>", text)
-    assert "".join(t.replace(" ", "") for t in texts if "S0000" in t or "ABCDEFGH" in t).count("ABCDEFGH") >= 20
-    assert max(len(t) for t in texts) <= 150                       # none exceeds the per-line budget
-    assert len([t for t in texts if "ABCDEFGH" in t]) >= 2         # wrapped onto more than one line
+    assert text.count("W") >= 140 if sid.startswith("W") else text.count("ABCDEFGH") >= 20
+
+    with sync_playwright() as p:
+        b = p.chromium.launch(executable_path=exe, args=["--no-sandbox"])
+        try:
+            page = b.new_page()
+            page.set_content(text)
+            boxes = page.evaluate("""() => {
+                const svg = document.querySelector('svg');
+                const vw = svg.viewBox.baseVal.width;
+                return [vw, [...svg.children].filter(e => e.tagName === 'text')
+                                .map(t => { const r = t.getBBox(); return [r.x + r.width, t.textContent.slice(0, 20)]; })];
+            }""")
+        finally:
+            b.close()
+    width, texts = boxes
+    assert texts, "no banner text found"
+    for right, label in texts:
+        assert right <= width, f"banner text {label!r} runs to {right:.0f}px of {width:.0f}px"
+
+
+def test_banner_states_genome_and_locus(tmp_path_factory):
+    exe = _skip_unless_browser()
+    out = tmp_path_factory.mktemp("locus")
+    html = write_html(PlotInputs(sample_id="LOC", cnvkit=load_cnvkit_data(FIXTURES / "sample.cnr", None, None)), out)
+    svg, _ = render_image.render_genome_image(html, out / "w", chromium_path=exe)
+    assert "Genome hg38" in svg.read_text() and "Locus: all" in svg.read_text()
+    svg2, _ = render_image.render_genome_image(html, out / "r", chromium_path=exe, locus="chr7:116,672,196-117,120,285")
+    assert "chr7:" in svg2.read_text().split("Locus:")[1][:60]
 
 
 def test_cnvkit_only_viewer_initialises_and_png_button_downloads(viewer):

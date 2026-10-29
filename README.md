@@ -90,7 +90,7 @@ open /tmp/26134S0005.igv.bars.html
 
 The viewer header has **Save SVG** and **Save PNG** buttons. They export the
 current view (whatever locus is on screen) with a banner carrying the sample ID,
-purity, ploidy, status and MSI, so an image is never separated from its sample.
+purity, ploidy, status, MSI, genome build and the locus shown, so an image is never separated from its sample or region.
 
 For a file without opening a browser, render the whole-genome view headlessly:
 

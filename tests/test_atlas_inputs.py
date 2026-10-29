@@ -230,3 +230,25 @@ def test_legend_does_not_call_zero_diploid():
     html = render_html(PlotInputs(sample_id="L"))
     assert "log&#x2082;(CN/ploidy); 0&#xa0;=&#xa0;CN equal to the ploidy" in html
     assert "log&#x2082;(CN/ploidy); 0&#xa0;=&#xa0;diploid" not in html
+
+
+@pytest.mark.parametrize("content, col", [
+    ("purity\tploidy\tploidy\n0.3\t3.9\t2.0\n", "ploidy"),
+    ("purity\tpurity\tploidy\n0.3\t0.5\t2.0\n", "purity"),
+    ("purity\tploidy\tstatus\tstatus\n0.3\t2.0\tNORMAL\tNO_TUMOR\n", "status"),
+])
+def test_duplicate_columns_are_rejected(tmp_path, content, col):
+    p = tmp_path / "d.tsv"
+    p.write_text(content)
+    with pytest.raises(InputError, match=f"more than one {col} column"):
+        load_qc_data(p)
+
+
+def test_bom_prefixed_report_is_accepted(tmp_path):
+    p = tmp_path / "bom.tsv"
+    p.write_bytes(b"\xef\xbb\xbf" + PURITY_TSV.read_bytes())
+    qc = load_qc_data(p)
+    assert (qc.purity, qc.ploidy, qc.status) == (pytest.approx(0.31), pytest.approx(3.9), "NORMAL")
+    r = _cli(tmp_path, "--sample", "BOM", "--cnvkit_cnr", str(FIXTURES / "sample.cnr"), "--qc_report", str(p))
+    assert r.returncode == 0, r.stderr
+    assert "Ploidy 3.90" in (tmp_path / "BOM.igv.bars.html").read_text(encoding="utf-8")

@@ -119,7 +119,7 @@ def load_qc_data(qc_report: "Path | None") -> QCData:
     if not path.is_file():
         raise InputError(f"qc_report {path} does not exist")
     try:
-        lines = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+        lines = [ln for ln in path.read_text(encoding="utf-8-sig").splitlines() if ln.strip()]
     except (OSError, UnicodeDecodeError) as e:
         raise InputError(f"qc_report {path.name} cannot be read: {e}") from None
     if not lines:
@@ -132,6 +132,9 @@ def load_qc_data(qc_report: "Path | None") -> QCData:
         raise InputError(f"qc_report {path.name} has no {'/'.join(missing)} column "
                          f"(columns: {', '.join(header)}); expected a tab-separated "
                          "file such as PURPLE's purity.tsv")
+    dupes = sorted({c for c in ("purity", "ploidy", "status") if header.count(c) > 1})
+    if dupes:
+        raise InputError(f"qc_report {path.name} has more than one {'/'.join(dupes)} column")
     if len(lines) < 2:
         raise InputError(f"qc_report {path.name} has a header but no data row")
     fields = lines[1].split("\t")

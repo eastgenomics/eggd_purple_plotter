@@ -74,15 +74,23 @@ def test_render_genome_image_writes_labelled_svg_and_png(viewer):
     assert width >= 2000                                         # 2x scale of a ~1600px view
 
 
-def test_unbundled_request_is_reported_with_url(viewer, tmp_path):
+def test_unbundled_request_is_reported_with_url(viewer, tmp_path, monkeypatch):
+    """Drop one bundled file from the routes: the render must fail and name that URL."""
     exe, html, out = viewer
-    broken = tmp_path / "x.html"
-    broken.write_text(html.read_text().replace(
-        "https://igv.org/web/release/3.8.3/dist/igv.min.js",
-        "https://example.invalid/igv.min.js"))
+    missing = render_image.CHROM_SIZES
+    monkeypatch.setattr(render_image, "ROUTES",
+                        {k: v for k, v in render_image.ROUTES.items() if k != missing})
     with pytest.raises(render_image.RenderError) as ei:
-        render_image.render_genome_image(broken, tmp_path / "x", chromium_path=exe, timeout_s=30)
-    assert "https://example.invalid/igv.min.js" in str(ei.value)
+        render_image.render_genome_image(html, tmp_path / "x", chromium_path=exe, timeout_s=30)
+    assert missing in str(ei.value)
+
+
+def test_igv_js_is_never_requested(viewer, tmp_path, monkeypatch):
+    """igv.js is inlined: no route for it exists, and the render still succeeds."""
+    exe, html, out = viewer
+    assert not any("igv.min.js" in u for u in render_image.ROUTES)
+    assert "igv.min.js" not in html.read_text().split("<script>")[0]
+    render_image.render_genome_image(html, tmp_path / "ok", chromium_path=exe)
 
 
 def test_gene_name_initial_locus_does_not_need_network(tmp_path_factory):
@@ -166,7 +174,7 @@ def test_cnvkit_only_viewer_initialises_and_png_button_downloads(viewer):
             page = b.new_page()
             page.route(lambda u: u.startswith("http"), handle)
             page.goto(html.resolve().as_uri())
-            page.wait_for_function("window.igvReady === true || !!window.igvError", timeout=60000)
+            page.wait_for_function("() => window.igvReady === true || !!window.igvError", timeout=60000)   # function form: a string predicate is eval()ed, which the page CSP blocks
             assert page.evaluate("window.igvError || null") is None
             with page.expect_download() as dl_png:
                 page.click("#btn-png")
@@ -178,3 +186,26 @@ def test_cnvkit_only_viewer_initialises_and_png_button_downloads(viewer):
             assert png_path.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
         finally:
             b.close()
+
+
+def test_csp_violation_is_reported(viewer, tmp_path):
+    """A script the CSP blocks (here: viewer code that no longer matches its hash) fails the render
+    promptly and names the violation, rather than timing out with no cause."""
+    exe, html, out = viewer
+    tampered = tmp_path / "t.html"
+    tampered.write_text(html.read_text(encoding="utf-8").replace(
+        '"use strict";', '"use strict"; /* changed */', 1), encoding="utf-8")
+    with pytest.raises(render_image.RenderError) as ei:
+        render_image.render_genome_image(tampered, tmp_path / "t", chromium_path=exe, timeout_s=30)
+    assert "Content-Security-Policy violations" in str(ei.value) and "script-src" in str(ei.value)
+
+
+def test_csp_violation_during_export_is_reported(viewer, tmp_path):
+    """If the CSP blocks the PNG export (here: blob: images removed from img-src), the error names it."""
+    exe, html, out = viewer
+    tampered = tmp_path / "e.html"
+    tampered.write_text(html.read_text(encoding="utf-8").replace("img-src data: blob:", "img-src data:", 1),
+                        encoding="utf-8")
+    with pytest.raises(render_image.RenderError) as ei:
+        render_image.render_genome_image(tampered, tmp_path / "e", chromium_path=exe, timeout_s=30)
+    assert "Content-Security-Policy violations" in str(ei.value) and "img-src" in str(ei.value)

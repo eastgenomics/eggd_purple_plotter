@@ -6,9 +6,11 @@ switches to the whole-genome view (locus ``all``) and calls the viewer's own
 ``window.ppExport`` functions, so the files are identical to what the
 "Save SVG" / "Save PNG" buttons produce.
 
-No network access is needed or used. The CDN ``igv.min.js`` and the hg38
-genome-definition files the viewer requests are served from ``assets/``;
-every other request is aborted and reported.
+No network access is needed or used. igv.js is embedded in the HTML itself; the
+hg38 genome-definition files the viewer requests are served from ``assets/``;
+every other request is aborted and reported. The requested URLs are on hosts the
+viewer's Content-Security-Policy allows (igv.org, hgdownload.soe.ucsc.edu), because
+the CSP is checked before Playwright's routing sees a request.
 
 Playwright is imported lazily so that purple_plotter.py and its tests do not
 depend on it. The browser is taken from --chromium_path, then $CHROMIUM_PATH,
@@ -24,12 +26,15 @@ from urllib.parse import quote
 ASSETS = Path(__file__).resolve().parent / "assets"
 
 # URLs the generated HTML requests -> bundled file (see assets/README.md).
-CDN_IGV = "https://igv.org/web/release/3.8.3/dist/igv.min.js"
+# igv.min.js is no longer requested (it is inlined); a request for it would be a bug and is
+# reported like any other unbundled URL.
 GENOME_BASE = "https://igv.org/genomes/data/hg38/"
+# Not an igv.org URL on purpose: igv.js replaces any igv.org hg38 fastaURL with UCSC's
+# hg38.2bit, which is not bundled.
+CHROM_SIZES = "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.chrom.sizes"
 ROUTES = {
-    CDN_IGV:                                  ("igv.min.js",         "application/javascript"),
     "https://igv.org/genomes/genomes3.json":  ("genomes.json",       "application/json"),
-    "https://assets.invalid/hg38.chrom.sizes": ("hg38.chrom.sizes",  "text/plain"),
+    CHROM_SIZES:                              ("hg38.chrom.sizes",   "text/plain"),
     GENOME_BASE + "cytoBandIdeo.txt.gz":      ("cytoBandIdeo.txt.gz", "application/gzip"),
     GENOME_BASE + "hg38_alias.tab":           ("hg38_alias.tab",     "text/plain"),
 }
@@ -62,6 +67,7 @@ def render_genome_image(
     chromium_path = chromium_path or os.environ.get("CHROMIUM_PATH") or None
     blocked: list[str] = []
     page_errors: list[str] = []
+    csp_violations: list[str] = []
 
     def diagnostics() -> str:
         parts = []
@@ -69,6 +75,8 @@ def render_genome_image(
             parts.append("requests not bundled (add to ROUTES): " + ", ".join(sorted(set(blocked))))
         if page_errors:
             parts.append("page errors: " + "; ".join(page_errors))
+        if csp_violations:
+            parts.append("Content-Security-Policy violations: " + "; ".join(csp_violations))
         return " | ".join(parts)
 
     def handle(route):
@@ -101,6 +109,12 @@ def render_genome_image(
                 lambda u: u.startswith(("http://", "https://")), handle
             )
             page.on("pageerror", lambda e: page_errors.append(str(e)))
+            # The viewer's CSP can block a request or script before routing or "pageerror"
+            # sees it; record violations so a failure names its cause.
+            page.expose_function("__ppCspViolation", lambda v: csp_violations.append(v))
+            page.add_init_script(
+                'document.addEventListener("securitypolicyviolation",'
+                ' e => window.__ppCspViolation(e.violatedDirective + " " + e.blockedURI));')
 
             # The viewer reads ?locus= before creating the browser, so the first
             # (and only) render is at `locus` and never asks the network to resolve
@@ -113,7 +127,7 @@ def render_genome_image(
                 state = page.evaluate("window.igvReady === true ? 'ready' : (window.igvError || null)")
                 if state == "ready":
                     break
-                if state or blocked or page_errors or waited >= timeout_s:
+                if state or blocked or page_errors or csp_violations or waited >= timeout_s:
                     why = f"igv.js failed to start: {state}" if state else (
                         "igv.js did not initialise" + (" (timed out)" if waited >= timeout_s else ""))
                     raise RenderError(why + (f" [{diagnostics()}]" if diagnostics() else ""))
@@ -123,11 +137,12 @@ def render_genome_image(
             svg = page.evaluate("window.ppExport.svg()")
             png_b64 = page.evaluate("s => window.ppExport.png(s)", scale)
         except PlaywrightError as e:
-            raise RenderError(f"Rendering failed: {e}") from e
+            page.wait_for_timeout(100)   # let a pending securitypolicyviolation event arrive
+            raise RenderError(f"Rendering failed: {e}" + (f" [{diagnostics()}]" if diagnostics() else "")) from e
         finally:
             browser.close()
 
-    if blocked or page_errors:
+    if blocked or page_errors or csp_violations:
         raise RenderError(diagnostics())
     if "<svg" not in svg:
         raise RenderError("toSVG() did not return an SVG document")

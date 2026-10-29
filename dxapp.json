@@ -1,10 +1,10 @@
 {
   "name": "eggd_purple_plotter",
   "title": "PURPLE IGV bars plotter",
-  "summary": "Generates a self-contained igv.js HTML viewer from PURPLE/AMBER/CNVkit per-sample outputs",
+  "summary": "Generates an igv.js HTML viewer (igv.js and track data embedded; hg38 genome fetched from igv.org/UCSC when opened) from PURPLE/AMBER/CNVkit per-sample outputs",
   "dxapi": "1.0.0",
-  "version": "1.1.0",
-  "properties": { "githubRelease": "1.1.0" },
+  "version": "1.2.0",
+  "properties": { "githubRelease": "1.2.0" },
   "developers":      ["org-emee_1"],
   "authorizedUsers": ["org-emee_1"],
   "inputSpec": [
@@ -12,7 +12,7 @@
       "name": "sample_id",
       "class": "string",
       "label": "Sample ID",
-      "help": "Sample identifier used in the output filename and HTML header."
+      "help": "Sample identifier used in the output filename and HTML header. Must be a plain file name: no '/', '\\' or NUL, and not '.' or '..'."
     },
     {
       "name": "purple_tar",

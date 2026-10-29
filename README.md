@@ -1,8 +1,8 @@
 # eggd_purple_plotter
 
-A DNAnexus app that takes per-sample outputs from the PURPLE/AMBER/CNVkit pipeline and generates a fully self-contained IGV.js HTML copy-number viewer.
+A DNAnexus app that takes per-sample outputs from the PURPLE/AMBER/CNVkit pipeline and generates a single-file IGV.js HTML copy-number viewer.
 
-The HTML embeds all track data as in-memory blob URLs — no server is required to view it. igv.js 3.8.3 is loaded from the igv.org CDN at view time, so an internet connection is needed to render the tracks.
+igv.js 3.8.3 and all track data are embedded in the HTML, so no server and no third-party script are needed. The hg38 genome (sequence, cytobands, aliases) and the RefSeq annotation are fetched from igv.org and UCSC when the file is opened, so an internet connection to those two hosts is needed to render it. See [Security](#security).
 
 ---
 
@@ -15,7 +15,7 @@ Given per-sample input files, the app:
 3. Reads purity, ploidy, and QC status from the QC report (defaults to `?` if absent)
 4. Reads MSI score (defaults to `?` if absent)
 5. Converts all available data to BEDGraph/SEG strings
-6. Renders a single self-contained HTML file with 7 igv.js tracks
+6. Renders a single HTML file with up to 7 igv.js tracks (igv.js and track data embedded)
 7. Uploads the HTML and registers it as the `igv_html` output
 
 Missing optional inputs are handled gracefully — tracks are simply omitted.
@@ -26,7 +26,7 @@ Missing optional inputs are handled gracefully — tracks are simply omitted.
 
 | Name | Class | Required | Description |
 |---|---|---|---|
-| `sample_id` | string | ✅ | Sample identifier |
+| `sample_id` | string | ✅ | Sample identifier; also the output file name, so it must not contain `/`, `\` or NUL, or be `.`/`..` (the job fails otherwise) |
 | `purple_tar` | file | one of these two | `{sample}.purple.tar.gz` from the PURPLE pipeline stage |
 | `cnvkit_cnr` | file | one of these two | `{sample}.cnr` from CNVkit |
 | `qc_report` | file | — | `{sample}.qc_report.tsv` (purity, ploidy, status) |
@@ -41,7 +41,7 @@ At least one of `purple_tar` or `cnvkit_cnr` must be supplied. The app exits wit
 
 | Name | Class | Description |
 |---|---|---|
-| `igv_html` | file | `{sample_id}.igv.bars.html` — self-contained HTML viewer |
+| `igv_html` | file | `{sample_id}.igv.bars.html` — HTML viewer (igv.js and track data embedded; genome fetched when opened) |
 
 ---
 
@@ -57,7 +57,7 @@ At least one of `purple_tar` or `cnvkit_cnr` must be supplied. The app exits wit
 | 6 | CNVkit called segments (SEG) | CNVkit CNS |
 | 7 | CNVkit genemetrics bar chart | CNVkit genemetrics |
 
-igv.js 3.8.3 is loaded from CDN at view time (`igv.org/web/release/3.8.3`).
+igv.js 3.8.3 is embedded in the HTML (from `resources/home/dnanexus/purple_plotter/assets/igv.min.js`).
 
 ---
 
@@ -103,7 +103,8 @@ For a file without opening a browser, render the whole-genome view headlessly:
 # -> /tmp/26134S0005.genome.svg, /tmp/26134S0005.genome.png
 ```
 
-No network is used: igv.js and the hg38 chromosome/cytoband files are served from
+No network is used: igv.js is embedded in the HTML, and the hg38 chromosome-size,
+cytoband and alias files are served from
 `resources/home/dnanexus/purple_plotter/assets/` (see its README). The image has
 no gene-annotation track.
 
@@ -152,12 +153,87 @@ dx run app-eggd_purple_plotter ...    # same -i args as above
 
 ---
 
+## Security
+
+Every generated viewer has the same structure:
+
+1. A `<meta http-equiv="Content-Security-Policy">` as the first element after `<meta charset>`.
+2. One **non-executable** `<script type="application/json" id="pp-data">` block holding every
+   per-sample value: all track data, the initial locus and the download file name. It is
+   JSON-encoded with `<`, `>`, `&` and all non-ASCII characters escaped, so a sample ID or file
+   content can never end the element or start a comment.
+3. igv.js 3.8.3, inlined from `assets/igv.min.js` and checked against its SHA-256 when loaded
+   (`IGV_JS_SHA256` in `purple_plotter.py`). Its MIT licence is reproduced in an HTML comment
+   above it; the DOMPurify notice is inside the script.
+4. The viewer code, inlined from `resources/home/dnanexus/purple_plotter/viewer.js`.
+
+Items 3 and 4 are **byte-identical for every sample**. igv.js builds click popups as HTML from
+raw values, so for the tracks built from the embedded data (seg, wig, merged) `viewer.js`
+supplies its own popup content with every value HTML-escaped (the CSP stops scripts, not
+injected markup); the RefSeq annotation keeps igv.js's own popup; the per-sample HTML-context values
+(`<title>`, header) are HTML-escaped. Tabs, CR and LF in the sample ID are replaced with `_`
+in the SEG track data, where the ID is a tab-delimited column. The CSP lets only those two scripts run, by hash:
+
+```
+default-src 'none';
+script-src 'sha256-<igv.js>' 'sha256-<viewer.js>';
+connect-src blob: https://igv.org https://hgdownload.soe.ucsc.edu;
+img-src data: blob:;
+style-src 'unsafe-inline';
+base-uri 'none';
+form-action 'none';
+object-src 'none'
+```
+
+- `connect-src blob:` — igv.js reads the embedded track data through `blob:` URLs.
+- `https://igv.org` — `genomes3.json`, cytobands, aliases, the MANE gene-search index.
+- `https://hgdownload.soe.ucsc.edu` — the hg38 `2bit` sequence and the RefSeq track
+  (igv.js 3.8.3 rewrites the igv.org hg38 FASTA to UCSC).
+- `img-src data: blob:` — igv.js icons, and the PNG export (an SVG `blob:` drawn into an image).
+- `style-src 'unsafe-inline'` — igv.js injects `<style>` elements and the legend uses `style=""`.
+  Styles cannot run code.
+- No `'unsafe-inline'` or `'unsafe-eval'` for scripts, and no `'wasm-unsafe-eval'`: igv.js 3.8.3
+  contains a WebAssembly module, but this viewer never instantiates it (checked in a browser).
+
+These directives were established in a real browser by recording `securitypolicyviolation`
+events while loading the whole genome, a chromosome, a 2 kb and a 100 bp window (sequence
+from UCSC), a gene search (`EGFR`), the RefSeq track, and both Save buttons, from `file://` and
+`http://localhost`: no violations. `tests/test_csp.py` repeats this offline in CI, and online
+with `PP_LIVE_NETWORK=1`.
+
+If igv.org's genome list is unreachable, igv.js would fall back to `raw.githubusercontent.com`,
+and for the sequence to UCSC's AWS mirror. The CSP blocks both, so the viewer then fails to
+load rather than reaching other hosts.
+
+A `<meta>` CSP cannot carry `frame-ancestors`, reporting or a report-only mode; a site that
+serves the viewers should add the same policy as a response header (with
+`frame-ancestors 'none'`).
+
+### Script hashes
+
+```bash
+.venv/bin/python3 resources/home/dnanexus/purple_plotter/purple_plotter.py --print-script-hashes
+```
+
+prints the two `sha256-…` values. For v1.2.0:
+
+| Script | Hash |
+|---|---|
+| igv.js 3.8.3 | `sha256-rPTumc3JG+iEIDkw25w5W8hiZ1UpM7SD2gtgnBbqBao=` |
+| viewer.js | `sha256-GjFxjH7HR881OR5AW6GaTKGxXSazG6uY5FyT1D/KmKw=` |
+
+Any change to `viewer.js` or `igv.min.js` changes these; record the new values with each release.
+
+---
+
 ## Architecture
 
 ```
 src/code.sh                          ← DNAnexus entry point; all platform I/O here
 resources/home/dnanexus/
   purple_plotter/purple_plotter.py   ← Pure Python CLI; no dxpy dependency
+  purple_plotter/viewer.js           ← Viewer code, inlined unchanged into every HTML
+  purple_plotter/assets/             ← igv.min.js (inlined), its licence, offline genome files
   packages/                          ← Bundled wheels for offline pip install
 resources/usr/bin/
   mark-section                       ← DNAnexus structured logging helper
@@ -227,7 +303,7 @@ A 4-part annotated HTML walkthrough of `purple_plotter.py` is in [`docs/`](docs/
 | Region | `aws:eu-central-1` |
 | Ubuntu | 24.04 |
 | Instance | `mem1_ssd1_v2_x2` |
-| igv.js | 3.8.3 (CDN) |
+| igv.js | 3.8.3 (embedded) |
 | Genome build | hg38 |
 
 ## Sharing outputs by URL

@@ -1,8 +1,16 @@
-"""eggd_purple_plotter — Generate a self-contained IGV bars HTML from PURPLE/CNVkit outputs."""
+"""eggd_purple_plotter — Generate an IGV bars HTML viewer from PURPLE/CNVkit outputs.
+
+igv.js and all track data are embedded in the HTML; the hg38 genome and annotation are
+fetched from igv.org / UCSC when the file is opened in a browser.
+"""
 import argparse
+import base64
+import functools
 import gzip
+import hashlib
 import html as _html
 import io
+import json
 import math
 import re
 import tarfile
@@ -286,6 +294,7 @@ HTML_BARS = """\
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="{csp}">
 <title>IGV bars — {sample}</title>
 <style>
 * {{ box-sizing: border-box; margin: 0; padding: 0; }}
@@ -344,294 +353,11 @@ body {{ font-family: -apple-system, Arial, sans-serif; background: #f0f2f5; }}
   </span>
 </div>
 
-<script src="https://igv.org/web/release/3.8.3/dist/igv.min.js"></script>
-<script>
-const covLog2Bg          = `{cov_log2_bg}`;
-const barAmpBg           = `{bar_amp_bg}`;
-const barGainBg          = `{bar_gain_bg}`;
-const barLossBg          = `{bar_loss_bg}`;
-const barHodelBg         = `{bar_hodel_bg}`;
-const bafBg              = `{baf_bg}`;
-const bafMirBg           = `{baf_mir_bg}`;
-const bafBarAmpTopBg     = `{baf_bar_amp_top_bg}`;
-const bafBarAmpBotBg     = `{baf_bar_amp_bot_bg}`;
-const bafBarGainTopBg    = `{baf_bar_gain_top_bg}`;
-const bafBarGainBotBg    = `{baf_bar_gain_bot_bg}`;
-const bafBarLossTopBg    = `{baf_bar_loss_top_bg}`;
-const bafBarLossBotBg    = `{baf_bar_loss_bot_bg}`;
-const bafBarHodelTopBg   = `{baf_bar_hodel_top_bg}`;
-const bafBarHodelBotBg   = `{baf_bar_hodel_bot_bg}`;
-const cnvkitCnrBg        = `{cnvkit_cnr_bg}`;
-const cnvkitSnsBg        = `{cnvkit_sns_bg}`;
-const cnvkitGenemetricsBg = `{cnvkit_gm_bg}`;
-const segData            = `{seg_data}`;
-
-// Blob URLs whose data is empty (input not supplied). igv.js throws while
-// parsing an empty SEG file and aborts createBrowser, leaving a blank viewer,
-// so tracks backed by empty data are removed before the browser is created.
-const emptyBlobs = new Set();
-function blob(txt) {{
-  const url = URL.createObjectURL(new Blob([txt], {{ type: "text/plain" }}));
-  if (!txt.trim()) emptyBlobs.add(url);
-  return url;
-}}
-
-function pruneTracks(list) {{
-  return list.map(function (t) {{
-    if (t.tracks) {{
-      const kept = t.tracks.filter(function (c) {{ return !emptyBlobs.has(c.url); }});
-      return kept.length ? Object.assign({{}}, t, {{ tracks: kept }}) : null;
-    }}
-    return emptyBlobs.has(t.url) ? null : t;
-  }}).filter(Boolean);
-}}
-
-igv.createBrowser(document.getElementById("igv-div"), {{
-  genome:    "hg38",
-  locus:     new URLSearchParams(location.search).get("locus") || "{locus}",
-  showRuler: true,
-  showCursorTrackingGuide: true,
-  tracks: pruneTracks([
-
-    // ── 1. Coverage scatter + CN log₂ bars ──────────────────────────────────
-    {{
-      type: "merged", name: "Coverage + CN (log\u2082)", height: 200,
-      min: -2, max: 2, autoscale: false, visibilityWindow: -1, alpha: 0.6,
-      tracks: [
-        {{ type: "wig", format: "bedgraph", url: blob(barAmpBg),
-           graphType: "bar", color: "#08306b", altColor: "#08306b",
-           min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
-        {{ type: "wig", format: "bedgraph", url: blob(barGainBg),
-           graphType: "bar", color: "#93c4e0", altColor: "#93c4e0",
-           min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
-        {{ type: "wig", format: "bedgraph", url: blob(barLossBg),
-           graphType: "bar", color: "#fca5a5", altColor: "#fca5a5",
-           min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
-        {{ type: "wig", format: "bedgraph", url: blob(barHodelBg),
-           graphType: "bar", color: "#8b0000", altColor: "#8b0000",
-           min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
-        {{ type: "wig", format: "bedgraph", url: blob(covLog2Bg),
-           graphType: "points", color: "rgba(80,80,80,0.5)", pointSize: 6,
-           min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
-      ],
-    }},
-
-    // ── 2. PURPLE CNV segments (log₂ SEG) ───────────────────────────────────
-    {{
-      name: " ", type: "seg", format: "seg",
-      url: blob(segData), height: 10,
-      posColorScale: {{ low: 0.1, high: 1.5, lowColor: 'rgb(255,255,255)', highColor: 'rgb(8,48,107)' }},
-      negColorScale: {{ low: -1.5, high: -0.1, lowColor: 'rgb(139,0,0)', highColor: 'rgb(255,255,255)' }},
-    }},
-
-    // ── 3. BAF scatter + fitted BAF bars ────────────────────────────────────
-    {{
-      type: "merged", name: "BAF", height: 100,
-      min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, alpha: 0.6,
-      tracks: [
-        {{ type: "wig", format: "bedgraph", url: blob(bafBarAmpTopBg),   graphType: "bar", color: "#08306b", altColor: "#08306b", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
-        {{ type: "wig", format: "bedgraph", url: blob(bafBarGainTopBg),  graphType: "bar", color: "#93c4e0", altColor: "#93c4e0", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
-        {{ type: "wig", format: "bedgraph", url: blob(bafBarLossTopBg),  graphType: "bar", color: "#fca5a5", altColor: "#fca5a5", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
-        {{ type: "wig", format: "bedgraph", url: blob(bafBarHodelTopBg), graphType: "bar", color: "#8b0000", altColor: "#8b0000", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
-        {{ type: "wig", format: "bedgraph", url: blob(bafBarAmpBotBg),   graphType: "bar", color: "#08306b", altColor: "#08306b", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
-        {{ type: "wig", format: "bedgraph", url: blob(bafBarGainBotBg),  graphType: "bar", color: "#93c4e0", altColor: "#93c4e0", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
-        {{ type: "wig", format: "bedgraph", url: blob(bafBarLossBotBg),  graphType: "bar", color: "#fca5a5", altColor: "#fca5a5", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
-        {{ type: "wig", format: "bedgraph", url: blob(bafBarHodelBotBg), graphType: "bar", color: "#8b0000", altColor: "#8b0000", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
-        {{ type: "wig", format: "bedgraph", url: blob(bafBg),            graphType: "points", color: "rgba(80,80,80,0.5)", pointSize: 6, min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
-        {{ type: "wig", format: "bedgraph", url: blob(bafMirBg),         graphType: "points", color: "rgba(80,80,80,0.5)", pointSize: 6, min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
-      ],
-    }},
-
-    // ── 4. PURPLE CNV segments (log₂ SEG) ───────────────────────────────────
-    {{
-      name: " ", type: "seg", format: "seg",
-      url: blob(segData), height: 10,
-      posColorScale: {{ low: 0.1, high: 1.5, lowColor: 'rgb(255,255,255)', highColor: 'rgb(8,48,107)' }},
-      negColorScale: {{ low: -1.5, high: -0.1, lowColor: 'rgb(139,0,0)', highColor: 'rgb(255,255,255)' }},
-    }},
-
-    // ── 5. CNVkit log₂ scatter (.cnr per-target ratios) ─────────────────────
-    {{
-      type: "merged", name: "CNVkit log\u2082", height: 150,
-      min: -2, max: 2, autoscale: false, visibilityWindow: -1,
-      tracks: [
-        {{ type: "wig", format: "bedgraph", url: blob(cnvkitCnrBg), graphType: "points", color: "#756bb1", pointSize: 10, min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
-      ],
-    }},
-
-    // ── 6. CNVkit called segments (.call.cns) ────────────────────────────────
-    {{
-      name: "CNVkit segments", type: "seg", format: "seg",
-      url: blob(cnvkitSnsBg), height: 50,
-      posColorScale: {{ low: 0.1, high: 1.5, lowColor: 'rgb(255,255,255)', highColor: 'rgb(8,48,107)' }},
-      negColorScale: {{ low: -1.5, high: -0.1, lowColor: 'rgb(139,0,0)', highColor: 'rgb(255,255,255)' }},
-    }},
-
-    // ── 7. CNVkit gene metrics (.genemetrics.csv) ────────────────────────────
-    {{
-      type: "merged", name: "CNVkit genemetrics", height: 80,
-      min: -2, max: 2, autoscale: false, visibilityWindow: -1,
-      tracks: [
-        {{ type: "wig", format: "bedgraph", url: blob(cnvkitGenemetricsBg), graphType: "bar", color: "#08306b", altColor: "#8b0000", min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" }},
-      ],
-    }},
-
-  ]),
-}}).then(function (b) {{
-  window.igvBrowser = b;
-  window.igvReady   = true;
-}}).catch(function (e) {{
-  window.igvError = String(e);
-  console.error(e);
-}});
-
-// ── Image export (current view) ─────────────────────────────────────────────
-// ppExport is also called by the headless renderer (render_image.py), so the
-// downloaded files and the pipeline output come from the same code path.
-const ppSampleFile = "{sample_file}";
-
-// Exported images carry the sample ID, purity/ploidy/status and MSI banner from
-// the page header, so an image is never separated from the sample it shows.
-// Break txt into lines whose rendered width (measured with the same font the SVG
-// text uses) fits in `maxPx`, at spaces where possible, hard-splitting any single
-// token that is wider than a line, so long sample IDs are never clipped.
-function ppWrap(txt, font, maxPx) {{
-  const ctx = document.createElement("canvas").getContext("2d");
-  ctx.font = font;
-  const fits = function (t) {{ return ctx.measureText(t).width * 1.05 <= maxPx; }};   // 5% safety for font fallback
-  const lines = []; let cur = "";
-  txt.split(" ").forEach(function (word) {{
-    let chars = Array.from(word);        // code points, so a surrogate pair is never split
-    while (!fits(chars.join("")) && chars.length > 1) {{
-      if (cur) {{ lines.push(cur); cur = ""; }}
-      let n = chars.length - 1;
-      while (n > 1 && !fits(chars.slice(0, n).join(""))) n--;
-      lines.push(chars.slice(0, n).join("")); chars = chars.slice(n);
-    }}
-    word = chars.join("");
-    if (cur && !fits(cur + " " + word)) {{ lines.push(cur); cur = word; }}
-    else cur = cur ? cur + " " + word : word;
-  }});
-  if (cur) lines.push(cur);
-  return lines.length ? lines : [""];
-}}
-
-function ppSvg() {{
-  if (!window.igvBrowser) throw new Error("IGV browser is not ready");
-  const NS = "http://www.w3.org/2000/svg";
-  const doc  = new DOMParser().parseFromString(window.igvBrowser.toSVG(), "image/svg+xml");
-  const root = doc.documentElement;
-  const [w, h] = ppSvgSize(root);
-  const clean = function (sel) {{ return document.querySelector(sel).textContent.replace(/\\s+/g, " ").trim(); }};
-  // The IGV SVG has ruler coordinates but not its navigation bar, so state the genome and
-  // locus explicitly: an image must identify what it shows once detached from its filename.
-  const loci = window.igvBrowser.currentLoci && window.igvBrowser.currentLoci();
-  // igv reports the whole genome as "all:1-<genome length>"; label it only when the range really is
-  // the whole genome, so a partial "all:<a>-<b>" view keeps its coordinates.
-  const glen = window.igvBrowser.genome && window.igvBrowser.genome.getGenomeLength && window.igvBrowser.genome.getGenomeLength();
-  const locusText = [].concat(loci || "all").map(function (l) {{
-    const m = /^all(?::(\\d+)-(\\d+))?$/.exec(l);
-    return m && (!m[1] || (Number(m[1]) <= 1 && glen && Math.abs(Number(m[2]) - glen) <= 1)) ? "all (whole genome)" : l;
-  }}).join(" | ");
-  const where = "Genome hg38 \u00b7 Locus: " + locusText;
-  const FONT = "Arial, sans-serif", maxPx = w - 24;
-  const title = ppWrap(clean("#hdr .ttl"),  "bold 14px " + FONT, maxPx);
-  const meta  = ppWrap(clean("#hdr .meta"), "12px " + FONT,      maxPx)
-                  .concat(ppWrap(where,     "12px " + FONT,      maxPx));
-  const BANNER = 8 + title.length * 18 + meta.length * 16 + 4;
-
-  const body = doc.createElementNS(NS, "g");
-  body.setAttribute("transform", "translate(0," + BANNER + ")");
-  while (root.firstChild) body.appendChild(root.firstChild);
-  const bg = doc.createElementNS(NS, "rect");
-  [["x", 0], ["y", 0], ["width", w], ["height", BANNER], ["fill", "#1a2638"]]
-    .forEach(function (kv) {{ bg.setAttribute(kv[0], kv[1]); }});
-  root.appendChild(bg);
-  let y = 8;
-  function add(lines, size, step, fill, weight) {{
-    lines.forEach(function (txt) {{
-      y += step;
-      const t = doc.createElementNS(NS, "text");
-      [["x", 12], ["y", y - 4], ["font-family", FONT], ["font-size", size],
-       ["font-weight", weight], ["fill", fill]].forEach(function (kv) {{ t.setAttribute(kv[0], kv[1]); }});
-      t.textContent = txt;
-      root.appendChild(t);
-    }});
-  }}
-  add(title, 14, 18, "#e8edf3", "bold");
-  add(meta,  12, 16, "#9aafc4", "normal");
-  root.appendChild(body);
-  root.setAttribute("height", h + BANNER);
-  root.setAttribute("viewBox", "0 0 " + w + " " + (h + BANNER));
-  return new XMLSerializer().serializeToString(root);
-}}
-
-function ppSvgSize(root) {{
-  const vb = (root.getAttribute("viewBox") || "").split(/[\\s,]+/).map(Number);
-  const w = parseFloat(root.getAttribute("width"))  || vb[2];
-  const h = parseFloat(root.getAttribute("height")) || vb[3];
-  if (!(w > 0 && h > 0)) throw new Error("SVG has no usable size");
-  return [w, h];
-}}
-
-function ppPng(scale) {{
-  scale = scale || 2;
-  const svgText = ppSvg();
-  const [w, h] = ppSvgSize(new DOMParser().parseFromString(svgText, "image/svg+xml").documentElement);
-  const url = URL.createObjectURL(new Blob([svgText], {{ type: "image/svg+xml;charset=utf-8" }}));
-  return new Promise(function (resolve, reject) {{
-    const img = new Image();
-    img.onload = function () {{
-      const c = document.createElement("canvas");
-      c.width = Math.round(w * scale); c.height = Math.round(h * scale);
-      const ctx = c.getContext("2d");
-      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
-      ctx.drawImage(img, 0, 0, c.width, c.height);
-      URL.revokeObjectURL(url);
-      c.toBlob(function (blob) {{ blob ? resolve(blob) : reject(new Error("PNG encode failed")); }}, "image/png");
-    }};
-    img.onerror = function () {{ URL.revokeObjectURL(url); reject(new Error("SVG could not be rasterised")); }};
-    img.src = url;
-  }});
-}}
-
-function ppDownload(blob, name) {{
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob); a.download = name;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(function () {{ URL.revokeObjectURL(a.href); }}, 1000);
-}}
-
-function ppLocusTag() {{
-  const l = window.igvBrowser && window.igvBrowser.currentLoci && window.igvBrowser.currentLoci();
-  const t = String(Array.isArray(l) ? l[0] : (l || "view")).replace(/[^A-Za-z0-9._-]+/g, "_");
-  return t || "view";
-}}
-
-window.ppExport = {{
-  svg: ppSvg,
-  png: function (scale) {{
-    return ppPng(scale).then(function (blob) {{
-      return new Promise(function (resolve, reject) {{
-        const r = new FileReader();
-        r.onload  = function () {{ resolve(String(r.result).split(",")[1]); }};
-        r.onerror = function () {{ reject(r.error); }};
-        r.readAsDataURL(blob);
-      }});
-    }});
-  }},
-}};
-
-document.getElementById("btn-svg").addEventListener("click", function () {{
-  try {{
-    ppDownload(new Blob([ppSvg()], {{ type: "image/svg+xml" }}), ppSampleFile + "." + ppLocusTag() + ".svg");
-  }} catch (e) {{ alert("Could not export SVG: " + e.message); }}
-}});
-document.getElementById("btn-png").addEventListener("click", function () {{
-  ppPng(2).then(function (blob) {{ ppDownload(blob, ppSampleFile + "." + ppLocusTag() + ".png"); }})
-          .catch(function (e) {{ alert("Could not export PNG: " + e.message); }});
-}});
-</script>
+<script type="application/json" id="pp-data">{data_json}</script>
+<!--
+{igv_licence}-->
+<script>{igv_js}</script>
+<script>{viewer_js}</script>
 </body>
 </html>
 """
@@ -639,16 +365,99 @@ document.getElementById("btn-png").addEventListener("click", function () {{
 
 # ── Rendering ──────────────────────────────────────────────────────────────────
 
-def render_html(inputs: "PlotInputs") -> str:
-    """Fill HTML_BARS template from PlotInputs. Empty strings produce empty blob URLs."""
-    ploidy = inputs.qc.ploidy
+PKG_DIR = Path(__file__).resolve().parent
+ASSETS  = PKG_DIR / "assets"
 
-    # Sanitise sample_id for backtick JS literal context (used in seg/CNVkit SEG strings)
-    # Also escape </ to prevent </script> breaking out of the inline <script> block
-    sample_js = (inputs.sample_id
-                 .replace("`", "\\`")
-                 .replace("${" , "\\${")
-                 .replace("</", "<\\/"))
+# igv.js 3.8.3 (byte-identical to https://igv.org/web/release/3.8.3/dist/igv.min.js), embedded in
+# every viewer so no third-party script is loaded. Checked at load time so a wrong or partial
+# asset fails loudly. On a version bump, change the file, this hash and IGV_JS_VERSION
+# (see assets/README.md).
+IGV_JS_VERSION = "3.8.3"
+IGV_JS_SHA256  = "acf4ee99cdc91be884203930db9c395bc86267552933b483da0b609c16ea05aa"
+
+# Origins the viewer may fetch from: blob: track data embedded in the page, igv.org
+# (genomes3.json, fasta index, cytobands, aliases, gene search) and UCSC (hg38 2bit sequence,
+# RefSeq annotation). See README "Security" for how each directive was established.
+CSP_CONNECT_SRC = ["blob:", "https://igv.org", "https://hgdownload.soe.ucsc.edu"]
+
+
+def _guard_inline_script(name: str, text: str) -> str:
+    """Refuse script text that the HTML parser would end or misread inside an inline <script>."""
+    low = text.lower()
+    for bad in ("</script", "<script", "<!--"):
+        if bad in low:
+            raise RuntimeError(f"{name} contains {bad!r} and cannot be inlined in a <script> element")
+    return text
+
+
+@functools.lru_cache(maxsize=1)
+def igv_js() -> str:
+    """The bundled igv.min.js, verified against IGV_JS_SHA256."""
+    data = (ASSETS / "igv.min.js").read_bytes()
+    got = hashlib.sha256(data).hexdigest()
+    if got != IGV_JS_SHA256:
+        raise RuntimeError(f"assets/igv.min.js has SHA-256 {got}, expected {IGV_JS_SHA256}")
+    return _guard_inline_script("igv.min.js", data.decode("utf-8"))
+
+
+@functools.lru_cache(maxsize=1)
+def igv_licence() -> str:
+    """igv.js MIT licence text, reproduced in every viewer as the licence requires."""
+    text = (ASSETS / "igv.js.LICENSE").read_text(encoding="utf-8")
+    if "--" in text or ">" in text:
+        raise RuntimeError("igv.js.LICENSE contains characters that would end the HTML comment")
+    return (f"igv.js {IGV_JS_VERSION} (https://github.com/igvteam/igv.js), embedded below.\n"
+            "It includes DOMPurify (Apache-2.0 / MPL-2.0); its notice is inside the script.\n\n"
+            + text)
+
+
+@functools.lru_cache(maxsize=1)
+def viewer_js() -> str:
+    """The fixed viewer code (viewer.js): identical for every sample."""
+    return _guard_inline_script("viewer.js", (PKG_DIR / "viewer.js").read_text(encoding="utf-8"))
+
+
+def script_hash(text: str) -> str:
+    """CSP source expression for an inline script: 'sha256-<base64 of the UTF-8 text>'."""
+    return "sha256-" + base64.b64encode(hashlib.sha256(text.encode("utf-8")).digest()).decode("ascii")
+
+
+def script_hashes() -> "list[str]":
+    """Hashes of the two executable scripts every viewer contains (igv.js, viewer.js)."""
+    return [script_hash(igv_js()), script_hash(viewer_js())]
+
+
+def content_security_policy() -> str:
+    """The CSP carried in every viewer's <meta>. Only the two hashed scripts may run."""
+    return "; ".join([
+        "default-src 'none'",
+        "script-src " + " ".join(f"'{h}'" for h in script_hashes()),
+        "connect-src " + " ".join(CSP_CONNECT_SRC),
+        "img-src data: blob:",
+        "style-src 'unsafe-inline'",       # igv.js injects <style>; the legend uses style="" (styles cannot run code)
+        "base-uri 'none'",
+        "form-action 'none'",
+        "object-src 'none'",
+    ])
+
+
+def json_for_html(obj) -> str:
+    """JSON text that is safe inside <script type="application/json">.
+
+    ensure_ascii escapes all non-ASCII (including U+2028/U+2029); < > & are escaped so the
+    text can never end the element or start a comment. The block is never executed.
+    """
+    text = json.dumps(obj, ensure_ascii=True, separators=(",", ":"))
+    return text.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+
+
+def render_html(inputs: "PlotInputs") -> str:
+    """Fill HTML_BARS from PlotInputs. Empty track strings produce no track (see viewer.js)."""
+    ploidy = inputs.qc.ploidy
+    sample = inputs.sample_id      # raw: it only ever reaches the JSON block (encoded) or HTML (escaped)
+    # SEG is tab/newline-delimited, and the sample name is a SEG column: a tab, CR or LF in the
+    # ID would add or corrupt rows. JSON encoding cannot prevent that, so replace them here.
+    seg_sample = re.sub(r"[\t\r\n]", "_", sample)
 
     # PURPLE tracks (empty strings if purple is None)
     if inputs.purple is not None:
@@ -657,7 +466,7 @@ def render_html(inputs: "PlotInputs") -> str:
         baf_bg      = baf_bedgraph(inputs.purple.baf_df)
         baf_mir_bg  = baf_bedgraph_mirror(inputs.purple.baf_df)
         baf_bar_bgs = baf_seg_bars_by_state(inputs.purple.seg_df, ploidy)
-        seg_data    = to_seg(inputs.purple.seg_df, sample_js, ploidy)
+        seg_data    = to_seg(inputs.purple.seg_df, seg_sample, ploidy)
     else:
         cov_log2_bg = ""
         bar_bgs     = {k: "" for k, *_ in CN_STATES}
@@ -666,59 +475,68 @@ def render_html(inputs: "PlotInputs") -> str:
 
     # CNVkit tracks (empty strings if dataframe is None)
     cnvkit_cnr_bg = cnr_to_bedgraph(inputs.cnvkit.cnr_df) if inputs.cnvkit.cnr_df is not None else ""
-    cnvkit_sns_bg = cns_to_seg(inputs.cnvkit.cns_df, sample_js, ploidy) if inputs.cnvkit.cns_df is not None else ""
+    cnvkit_sns_bg = cns_to_seg(inputs.cnvkit.cns_df, seg_sample, ploidy) if inputs.cnvkit.cns_df is not None else ""
     cnvkit_gm_bg  = genemetrics_to_bedgraph(inputs.cnvkit.gm_df) if inputs.cnvkit.gm_df is not None else ""
 
     # Header values — show "?" when no QC file was loaded
     purity_str = "?" if not inputs.qc.loaded else f"{inputs.qc.purity:.0%}"
     ploidy_str = "?" if not inputs.qc.loaded else f"{inputs.qc.ploidy:.2f}"
 
-    # Sanitise values injected into HTML/JS contexts
-    sample_html  = _html.escape(inputs.sample_id)           # used in <title> and <span>
-    locus_js     = (inputs.locus
-                     .replace("\\", "\\\\")
-                     .replace('"', '\\"')
-                     .replace("</", "<\\/"))  # prevent </script> injection
-
-    sample_file = re.sub(r"[^A-Za-z0-9._-]+", "_", inputs.sample_id) or "sample"
+    # All per-sample values the viewer code reads, in one non-executable JSON block.
+    data = {
+        "locus":                inputs.locus,
+        "sample_file":          re.sub(r"[^A-Za-z0-9._-]+", "_", sample) or "sample",
+        "cov_log2_bg":          cov_log2_bg,
+        "bar_amp_bg":           bar_bgs["amp"],
+        "bar_gain_bg":          bar_bgs["gain"],
+        "bar_loss_bg":          bar_bgs["loss"],
+        "bar_hodel_bg":         bar_bgs["hodel"],
+        "baf_bg":               baf_bg,
+        "baf_mir_bg":           baf_mir_bg,
+        "baf_bar_amp_top_bg":   baf_bar_bgs["amp_top"],
+        "baf_bar_amp_bot_bg":   baf_bar_bgs["amp_bot"],
+        "baf_bar_gain_top_bg":  baf_bar_bgs["gain_top"],
+        "baf_bar_gain_bot_bg":  baf_bar_bgs["gain_bot"],
+        "baf_bar_loss_top_bg":  baf_bar_bgs["loss_top"],
+        "baf_bar_loss_bot_bg":  baf_bar_bgs["loss_bot"],
+        "baf_bar_hodel_top_bg": baf_bar_bgs["hodel_top"],
+        "baf_bar_hodel_bot_bg": baf_bar_bgs["hodel_bot"],
+        "seg_data":             seg_data,
+        "cnvkit_cnr_bg":        cnvkit_cnr_bg,
+        "cnvkit_sns_bg":        cnvkit_sns_bg,
+        "cnvkit_gm_bg":         cnvkit_gm_bg,
+    }
 
     return HTML_BARS.format(
-        sample               = sample_html,
-        sample_file          = sample_file,
-        purity               = purity_str,
-        ploidy               = ploidy_str,
-        status               = _html.escape(inputs.qc.status),
-        msi_score            = _html.escape(inputs.msi.score_str),
-        msi_status           = _html.escape(inputs.msi.status_str),
-        locus                = locus_js,
-        cov_log2_bg          = cov_log2_bg,
-        bar_amp_bg           = bar_bgs["amp"],
-        bar_gain_bg          = bar_bgs["gain"],
-        bar_loss_bg          = bar_bgs["loss"],
-        bar_hodel_bg         = bar_bgs["hodel"],
-        baf_bg               = baf_bg,
-        baf_mir_bg           = baf_mir_bg,
-        baf_bar_amp_top_bg   = baf_bar_bgs["amp_top"],
-        baf_bar_amp_bot_bg   = baf_bar_bgs["amp_bot"],
-        baf_bar_gain_top_bg  = baf_bar_bgs["gain_top"],
-        baf_bar_gain_bot_bg  = baf_bar_bgs["gain_bot"],
-        baf_bar_loss_top_bg  = baf_bar_bgs["loss_top"],
-        baf_bar_loss_bot_bg  = baf_bar_bgs["loss_bot"],
-        baf_bar_hodel_top_bg = baf_bar_bgs["hodel_top"],
-        baf_bar_hodel_bot_bg = baf_bar_bgs["hodel_bot"],
-        seg_data             = seg_data,
-        cnvkit_cnr_bg        = cnvkit_cnr_bg,
-        cnvkit_sns_bg        = cnvkit_sns_bg,
-        cnvkit_gm_bg         = cnvkit_gm_bg,
+        csp          = _html.escape(content_security_policy(), quote=False),   # never contains '"' (checked in tests)
+        sample       = _html.escape(sample),                 # <title> and header <span>
+        purity       = purity_str,
+        ploidy       = ploidy_str,
+        status       = _html.escape(inputs.qc.status),
+        msi_score    = _html.escape(inputs.msi.score_str),
+        msi_status   = _html.escape(inputs.msi.status_str),
+        data_json    = json_for_html(data),
+        igv_licence  = igv_licence(),
+        igv_js       = igv_js(),
+        viewer_js    = viewer_js(),
     )
+
+
+def check_sample_id_for_filename(sample_id: str) -> None:
+    """The output is {sample_id}.igv.bars.html (here and in src/code.sh), so the ID must be a
+    plain file name: no path separators, NUL, or "." / ".."."""
+    if not sample_id or sample_id in (".", "..") or any(c in sample_id for c in "/\\\0"):
+        raise ValueError(f"sample ID {sample_id!r} cannot be used as a file name "
+                         "(it must not be empty, '.', '..', or contain '/', '\\' or NUL)")
 
 
 def write_html(inputs: "PlotInputs", output_dir: Path) -> Path:
     """Render HTML and write to {output_dir}/{sample_id}.igv.bars.html."""
+    check_sample_id_for_filename(inputs.sample_id)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     out = output_dir / f"{inputs.sample_id}.igv.bars.html"
-    out.write_text(render_html(inputs))
+    out.write_text(render_html(inputs), encoding="utf-8")
     return out
 
 
@@ -729,7 +547,7 @@ def main() -> None:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    ap.add_argument("--sample",             required=True,  help="Sample ID")
+    ap.add_argument("--sample",             default=None,   help="Sample ID (required unless --print-script-hashes)")
     ap.add_argument("--purple_tar",         default=None,   help="PURPLE tar.gz archive")
     ap.add_argument("--qc_report",          default=None,   help="QC report TSV")
     ap.add_argument("--cnvkit_cnr",         default=None,   help="CNVkit CNR file")
@@ -738,7 +556,20 @@ def main() -> None:
     ap.add_argument("--msi_report",         default=None,   help="MSI report TSV")
     ap.add_argument("--locus",              default="all",  help="Initial IGV locus")
     ap.add_argument("--output_dir",         default=".",    help="Output directory")
+    ap.add_argument("--print-script-hashes", action="store_true",
+                    help="Print the CSP sha256 hashes of the two scripts every viewer contains, then exit")
     args = ap.parse_args()
+
+    if args.print_script_hashes:
+        for h in script_hashes():
+            print(h)
+        return
+    if not args.sample:
+        ap.error("--sample is required")
+    try:
+        check_sample_id_for_filename(args.sample)
+    except ValueError as e:
+        ap.error(str(e))
 
     if args.purple_tar is None and args.cnvkit_cnr is None:
         ap.error(

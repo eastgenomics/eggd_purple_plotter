@@ -119,27 +119,41 @@ def load_qc_data(qc_report: "Path | None") -> QCData:
     if not path.is_file():
         raise InputError(f"qc_report {path} does not exist")
     try:
-        df = pd.read_csv(path, sep="\t")
-    except pd.errors.EmptyDataError:
-        raise InputError(f"qc_report {path.name} is empty") from None
-    missing = [c for c in ("purity", "ploidy") if c not in df.columns]
+        lines = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    except (OSError, UnicodeDecodeError) as e:
+        raise InputError(f"qc_report {path.name} cannot be read: {e}") from None
+    if not lines:
+        raise InputError(f"qc_report {path.name} is empty")
+    # Plain tab splitting (no quoting rules): a value can never shift under another header,
+    # which pandas allows when a row has more fields than the header.
+    header = [h.strip() for h in lines[0].split("\t")]
+    missing = [c for c in ("purity", "ploidy") if c not in header]
     if missing:
         raise InputError(f"qc_report {path.name} has no {'/'.join(missing)} column "
-                         f"(columns: {', '.join(map(str, df.columns))}); expected a tab-separated "
+                         f"(columns: {', '.join(header)}); expected a tab-separated "
                          "file such as PURPLE's purity.tsv")
-    if df.empty:
+    if len(lines) < 2:
         raise InputError(f"qc_report {path.name} has a header but no data row")
-    row = df.iloc[0]
+    fields = lines[1].split("\t")
+    if len(fields) != len(header):
+        raise InputError(f"qc_report {path.name}: first data row has {len(fields)} fields "
+                         f"but the header has {len(header)}")
+    row = dict(zip(header, (f.strip() for f in fields)))
     values = {}
     for col in ("purity", "ploidy"):
         try:
             values[col] = float(row[col])
-        except (TypeError, ValueError):
+        except ValueError:
             values[col] = float("nan")
         if not math.isfinite(values[col]):
             raise InputError(f"qc_report {path.name}: {col} value {row[col]!r} is not a number")
-    val = row.get("status", pd.NA)
-    status = "UNKNOWN" if pd.isna(val) or not str(val).strip() else str(val).strip()
+    if not 0.0 <= values["purity"] <= 1.0:
+        raise InputError(f"qc_report {path.name}: purity {values['purity']} is outside 0-1")
+    if values["ploidy"] < 0.1:
+        # Segment conversion clamps the denominator at 0.1; a smaller value could not be drawn as given.
+        raise InputError(f"qc_report {path.name}: ploidy {values['ploidy']} is below 0.1")
+    val = row.get("status", "")
+    status = val if val else "UNKNOWN"
     return QCData(purity=values["purity"], ploidy=values["ploidy"], status=status, loaded=True)
 
 
@@ -379,7 +393,7 @@ body {{ font-family: -apple-system, Arial, sans-serif; background: #f0f2f5; }}
   <div class="li"><div class="sw" style="background:#08306b"></div><div class="sw" style="background:#8b0000"></div>CNVkit genemetrics (gain / loss)</div>
   <span class="note">
     Coverage y: &#x2212;2&#x2013;+2 &nbsp;&#xb7;&nbsp;
-    Bars y: log&#x2082;(CN/ploidy); 0&#xa0;=&#xa0;diploid &nbsp;&#xb7;&nbsp;
+    Bars y: log&#x2082;(CN/ploidy); 0&#xa0;=&#xa0;CN equal to the ploidy &nbsp;&#xb7;&nbsp;
     CNVkit y: log&#x2082; ratio; 0&#xa0;=&#xa0;diploid &nbsp;&#xb7;&nbsp;
     BAF y: 0&#x2013;1
   </span>
@@ -622,7 +636,7 @@ def main() -> None:
 
     purple = load_purple_data(Path(args.purple_tar)) if args.purple_tar else None
     try:
-        qc = load_qc_data(Path(args.qc_report) if args.qc_report else None)
+        qc = load_qc_data(Path(args.qc_report) if args.qc_report is not None else None)
     except InputError as e:
         ap.exit(1, f"ERROR: {e}\n")
     msi    = load_msi_data(Path(args.msi_report) if args.msi_report else None)

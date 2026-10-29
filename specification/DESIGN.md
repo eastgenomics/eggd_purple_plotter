@@ -168,7 +168,7 @@ class PurpleData:
 class QCData:
     purity: float  = 0.5       # fraction (0–1)
     ploidy: float  = 2.0       # average ploidy
-    status: str    = "UNKNOWN" # e.g. "NORMAL", "FAIL_CONTAMINATION"
+    status: str    = "UNKNOWN" # fit status from the supplied file, e.g. "NORMAL", "NO_TUMOR" (not a QC verdict)
 
 @dataclass
 class MSIData:
@@ -266,7 +266,7 @@ all tests run locally with fixture TSV files.
 
 ## 9. Use cases
 
-1. **Primary**: A clinical bioinformatician submits a PURPLE workflow run; `eggd_purple_plotter` runs as the final stage and produces an IGV bars HTML for immediate review.
+1. **Primary**: A clinical bioinformatician submits a PURPLE workflow run; `eggd_purple_plotter` runs as the final stage and produces an IGV bars HTML for immediate review. For the planned Atlas CNV workflow v2.0.0 (not yet built or signed off) the intended link is `stage-purple.purity_tsv` → `qc_report`, with `.genemetrics.tsv` from CNVkit batch v2.1.0.
 2. **Secondary**: A bioinformatician reruns the plotter stage alone after PURPLE reports a purity change, without rerunning the full workflow.
 3. **Secondary**: The app is run with only CNVkit inputs (no PURPLE tar) for a sample where PURPLE did not converge.
 4. **Non-use-case**: Running on a cohort in batch — use a submission script calling the app per-sample in parallel instead.

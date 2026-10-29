@@ -86,8 +86,9 @@ purity	ploidy	status
 | `status` | string, optional | Shown as **Fit status**, e.g. `NORMAL`, `NO_TUMOR`; blank/missing → `UNKNOWN`. Not a QC verdict |
 
 No file: purity/ploidy/fit status show `?`; segment tracks assume ploidy 2.0, with a visible
-warning. A supplied file without numeric purity/ploidy (or missing, empty, comma-separated)
-fails with a clear error rather than falling back.
+warning. A supplied file fails with a clear error rather than falling back if it is missing,
+empty, unreadable or not tab-separated, lacks numeric purity/ploidy, has a first data row whose
+field count differs from the header, or has purity outside 0–1 or ploidy below 0.1.
 
 ---
 

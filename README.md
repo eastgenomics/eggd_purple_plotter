@@ -50,8 +50,10 @@ At least one of `purple_tar` or `cnvkit_cnr` must be supplied. The app exits wit
 - With no `qc_report`, purity, ploidy and fit status show `?`, and the CN/ploidy segment tracks
   use ploidy **2.0**. That is a rendering assumption, not a measured ploidy, and the viewer
   header and exported images say so.
-- A supplied file that is missing, empty, comma-separated, or has no numeric `purity`/`ploidy`
-  fails the job with a message naming the problem. It is never treated as "no report".
+- A supplied file fails the job, with a message naming the problem, if it is missing, empty or
+  unreadable; is not tab-separated; has no numeric `purity`/`ploidy`; has a first data row whose
+  field count differs from the header; or has purity outside 0–1 or ploidy below 0.1 (the
+  segment conversion cannot draw a smaller ploidy as given). It is never treated as "no report".
 - Intended Atlas CNV workflow v2.0.0 link (not yet built or signed off):
   `stage-purple.purity_tsv` → `stage-purple_plotter.qc_report`.
 

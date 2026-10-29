@@ -194,3 +194,39 @@ def test_exported_image_carries_the_ploidy_warning(tmp_path):
     svg, _ = render_image.render_genome_image(html, tmp_path / "w", chromium_path=exe)
     text = svg.read_text()
     assert "ploidy 2.0 is assumed" in text and "Fit status: ?" in text
+
+
+@pytest.mark.parametrize("content, msg", [
+    ("purity\tploidy\n0.31\t0.8\t3.9\n", "first data row has 3 fields but the header has 2"),
+    ("purity\tploidy\tstatus\n0.31\t3.9\n", "first data row has 2 fields but the header has 3"),
+    ('purity\tploidy\tstatus\n0.3\t2.0\t"unterminated\n', None),            # quotes are plain text
+    ("purity\tploidy\n1.5\t2.0\n", "purity 1.5 is outside 0-1"),
+    ("purity\tploidy\n0.5\t0\n", "ploidy 0.0 is below 0.1"),
+    ("purity\tploidy\n0.5\t-2\n", "ploidy -2.0 is below 0.1"),
+])
+def test_report_row_shape_and_ranges(tmp_path, content, msg):
+    p = tmp_path / "r.tsv"
+    p.write_text(content)
+    if msg is None:
+        assert load_qc_data(p).status == '"unterminated'
+        return
+    with pytest.raises(InputError, match=re.escape(msg)):
+        load_qc_data(p)
+
+
+def test_cli_empty_qc_report_argument_is_an_error_not_absent(tmp_path):
+    r = _cli(tmp_path, "--sample", "E", "--cnvkit_cnr", str(FIXTURES / "sample.cnr"), "--qc_report", "")
+    assert r.returncode != 0 and "does not exist" in r.stderr and "Traceback" not in r.stderr
+
+
+def test_unreadable_report_is_an_input_error(tmp_path):
+    p = tmp_path / "bin.tsv"
+    p.write_bytes(b"purity\tploidy\n\xff\xfe\n")
+    with pytest.raises(InputError, match="cannot be read"):
+        load_qc_data(p)
+
+
+def test_legend_does_not_call_zero_diploid():
+    html = render_html(PlotInputs(sample_id="L"))
+    assert "log&#x2082;(CN/ploidy); 0&#xa0;=&#xa0;CN equal to the ploidy" in html
+    assert "log&#x2082;(CN/ploidy); 0&#xa0;=&#xa0;diploid" not in html

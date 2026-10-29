@@ -1,0 +1,9 @@
+{
+  "name": "pp_headless_chromium",
+  "title": "Headless Chromium + Playwright for eggd_purple_plotter",
+  "description": "Playwright (Python) in /opt/pp_render and its Chromium headless shell in /opt/ms-playwright, with the Ubuntu libraries Chromium needs. Used by eggd_purple_plotter to render the whole-genome IGV view to PNG/SVG.",
+  "version": "1.0.0",
+  "distribution": "Ubuntu",
+  "release": "24.04",
+  "instanceType": "mem2_ssd1_x4"
+}

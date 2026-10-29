@@ -388,7 +388,7 @@ function pruneTracks(list) {{
 
 igv.createBrowser(document.getElementById("igv-div"), {{
   genome:    "hg38",
-  locus:     "{locus}",
+  locus:     new URLSearchParams(location.search).get("locus") || "{locus}",
   showRuler: true,
   showCursorTrackingGuide: true,
   tracks: pruneTracks([
@@ -492,29 +492,55 @@ const ppSampleFile = "{sample_file}";
 
 // Exported images carry the sample ID, purity/ploidy/status and MSI banner from
 // the page header, so an image is never separated from the sample it shows.
+// Break txt into lines of at most `max` characters, at spaces where possible and
+// hard-splitting tokens longer than a line, so long sample IDs are never clipped.
+function ppWrap(txt, max) {{
+  const lines = []; let cur = "";
+  txt.split(" ").forEach(function (word) {{
+    while (word.length > max) {{
+      if (cur) {{ lines.push(cur); cur = ""; }}
+      lines.push(word.slice(0, max)); word = word.slice(max);
+    }}
+    if (cur && (cur + " " + word).length > max) {{ lines.push(cur); cur = word; }}
+    else cur = cur ? cur + " " + word : word;
+  }});
+  if (cur) lines.push(cur);
+  return lines.length ? lines : [""];
+}}
+
 function ppSvg() {{
   if (!window.igvBrowser) throw new Error("IGV browser is not ready");
-  const NS = "http://www.w3.org/2000/svg", BANNER = 44;
+  const NS = "http://www.w3.org/2000/svg";
   const doc  = new DOMParser().parseFromString(window.igvBrowser.toSVG(), "image/svg+xml");
   const root = doc.documentElement;
   const [w, h] = ppSvgSize(root);
+  const clean = function (sel) {{ return document.querySelector(sel).textContent.replace(/\\s+/g, " ").trim(); }};
+  // average glyph width as a fraction of font size; bold capitals/digits are wide, so be generous
+  const perLine = function (size, k) {{ return Math.max(10, Math.floor((w - 24) / (size * k))); }};
+  const title = ppWrap(clean("#hdr .ttl"),  perLine(14, 0.8));
+  const meta  = ppWrap(clean("#hdr .meta"), perLine(12, 0.66));
+  const BANNER = 8 + title.length * 18 + meta.length * 16 + 4;
+
   const body = doc.createElementNS(NS, "g");
   body.setAttribute("transform", "translate(0," + BANNER + ")");
   while (root.firstChild) body.appendChild(root.firstChild);
   const bg = doc.createElementNS(NS, "rect");
   [["x", 0], ["y", 0], ["width", w], ["height", BANNER], ["fill", "#1a2638"]]
     .forEach(function (kv) {{ bg.setAttribute(kv[0], kv[1]); }});
-  function line(txt, y, size, fill, weight) {{
-    const t = doc.createElementNS(NS, "text");
-    [["x", 12], ["y", y], ["font-family", "Arial, sans-serif"], ["font-size", size],
-     ["font-weight", weight], ["fill", fill]].forEach(function (kv) {{ t.setAttribute(kv[0], kv[1]); }});
-    t.textContent = txt;
-    return t;
-  }}
-  const clean = function (sel) {{ return document.querySelector(sel).textContent.replace(/\\s+/g, " ").trim(); }};
   root.appendChild(bg);
-  root.appendChild(line(clean("#hdr .ttl"), 18, 14, "#e8edf3", "bold"));
-  root.appendChild(line(clean("#hdr .meta"), 36, 12, "#9aafc4", "normal"));
+  let y = 8;
+  function add(lines, size, step, fill, weight) {{
+    lines.forEach(function (txt) {{
+      y += step;
+      const t = doc.createElementNS(NS, "text");
+      [["x", 12], ["y", y - 4], ["font-family", "Arial, sans-serif"], ["font-size", size],
+       ["font-weight", weight], ["fill", fill]].forEach(function (kv) {{ t.setAttribute(kv[0], kv[1]); }});
+      t.textContent = txt;
+      root.appendChild(t);
+    }});
+  }}
+  add(title, 14, 18, "#e8edf3", "bold");
+  add(meta,  12, 16, "#9aafc4", "normal");
   root.appendChild(body);
   root.setAttribute("height", h + BANNER);
   root.setAttribute("viewBox", "0 0 " + w + " " + (h + BANNER));

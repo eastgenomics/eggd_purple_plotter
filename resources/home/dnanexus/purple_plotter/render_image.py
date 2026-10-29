@@ -19,6 +19,7 @@ import base64
 import os
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 ASSETS = Path(__file__).resolve().parent / "assets"
 
@@ -49,8 +50,10 @@ def render_genome_image(
 ) -> tuple[Path, Path]:
     """Write ``{out_prefix}.svg`` and ``{out_prefix}.png``; return both paths.
 
-    Raises RenderError if the viewer fails to initialise or any request other
-    than the bundled ones is attempted (so a missing asset is not silent).
+    ``locus`` is applied before the viewer starts (via ``?locus=``), whatever
+    initial locus the HTML was generated with. Raises RenderError, naming the
+    URLs and page errors involved, if the viewer fails to initialise or any
+    request other than the bundled ones is attempted.
     """
     from playwright.sync_api import sync_playwright, Error as PlaywrightError
 
@@ -58,6 +61,15 @@ def render_genome_image(
     out_prefix = Path(out_prefix)
     chromium_path = chromium_path or os.environ.get("CHROMIUM_PATH") or None
     blocked: list[str] = []
+    page_errors: list[str] = []
+
+    def diagnostics() -> str:
+        parts = []
+        if blocked:
+            parts.append("requests not bundled (add to ROUTES): " + ", ".join(sorted(set(blocked))))
+        if page_errors:
+            parts.append("page errors: " + "; ".join(page_errors))
+        return " | ".join(parts)
 
     def handle(route):
         url = route.request.url
@@ -88,19 +100,26 @@ def render_genome_image(
             page.route(
                 lambda u: u.startswith(("http://", "https://")), handle
             )
-            console_errors: list[str] = []
-            page.on("pageerror", lambda e: console_errors.append(str(e)))
-            page.goto(html_path.as_uri())
-            try:
-                page.wait_for_function("window.igvReady === true || !!window.igvError")
-            except PlaywrightError as e:
-                raise RenderError(f"igv.js did not initialise: {e}") from e
-            err = page.evaluate("window.igvError || null")
-            if err:
-                raise RenderError(f"igv.js failed to start: {err}")
+            page.on("pageerror", lambda e: page_errors.append(str(e)))
 
-            if locus:
-                page.evaluate("loc => window.igvBrowser.search(loc)", locus)
+            # The viewer reads ?locus= before creating the browser, so the first
+            # (and only) render is at `locus` and never asks the network to resolve
+            # the HTML's own initial locus (e.g. a gene name).
+            page.goto(html_path.as_uri() + "?locus=" + quote(locus or "all", safe=""))
+
+            # Poll so an unbundled request or a script error fails fast, with its cause.
+            waited = 0.0
+            while True:
+                state = page.evaluate("window.igvReady === true ? 'ready' : (window.igvError || null)")
+                if state == "ready":
+                    break
+                if state or blocked or page_errors or waited >= timeout_s:
+                    why = f"igv.js failed to start: {state}" if state else (
+                        "igv.js did not initialise" + (" (timed out)" if waited >= timeout_s else ""))
+                    raise RenderError(why + (f" [{diagnostics()}]" if diagnostics() else ""))
+                page.wait_for_timeout(250)
+                waited += 0.25
+
             svg = page.evaluate("window.ppExport.svg()")
             png_b64 = page.evaluate("s => window.ppExport.png(s)", scale)
         except PlaywrightError as e:
@@ -108,13 +127,8 @@ def render_genome_image(
         finally:
             browser.close()
 
-    if blocked:
-        raise RenderError(
-            "Viewer requested URLs that are not bundled (add them to ROUTES): "
-            + ", ".join(sorted(set(blocked)))
-        )
-    if console_errors:
-        raise RenderError("Page errors: " + "; ".join(console_errors))
+    if blocked or page_errors:
+        raise RenderError(diagnostics())
     if "<svg" not in svg:
         raise RenderError("toSVG() did not return an SVG document")
 

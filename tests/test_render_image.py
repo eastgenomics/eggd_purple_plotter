@@ -16,7 +16,7 @@ PKG = Path(__file__).parent.parent / "resources/home/dnanexus/purple_plotter"
 sys.path.insert(0, str(PKG))
 
 import render_image
-from purple_plotter import PlotInputs, QCData, MSIData, load_cnvkit_data, write_html
+from purple_plotter import PlotInputs, QCData, MSIData, load_cnvkit_data, render_html, write_html
 
 FIXTURES = Path(__file__).parent / "test_data"
 
@@ -73,14 +73,40 @@ def test_render_genome_image_writes_labelled_svg_and_png(viewer):
     assert width >= 2000                                         # 2x scale of a ~1600px view
 
 
-def test_unbundled_request_is_reported_not_silent(viewer, tmp_path):
+def test_unbundled_request_is_reported_with_url(viewer, tmp_path):
     exe, html, out = viewer
-    empty_html = tmp_path / "x.html"
-    empty_html.write_text(html.read_text().replace(
+    broken = tmp_path / "x.html"
+    broken.write_text(html.read_text().replace(
         "https://igv.org/web/release/3.8.3/dist/igv.min.js",
         "https://example.invalid/igv.min.js"))
-    with pytest.raises(render_image.RenderError):
-        render_image.render_genome_image(empty_html, tmp_path / "x", chromium_path=exe, timeout_s=15)
+    with pytest.raises(render_image.RenderError) as ei:
+        render_image.render_genome_image(broken, tmp_path / "x", chromium_path=exe, timeout_s=30)
+    assert "https://example.invalid/igv.min.js" in str(ei.value)
+
+
+def test_gene_name_initial_locus_does_not_need_network(tmp_path_factory):
+    """A gene-name locus in the HTML would call the online locus service; the renderer must override it."""
+    exe = _skip_unless_browser()
+    out = tmp_path_factory.mktemp("gene")
+    html = write_html(PlotInputs(sample_id="GENE", locus="BRCA1",
+                                 cnvkit=load_cnvkit_data(FIXTURES / "sample.cnr", None, None)), out)
+    svg, png = render_image.render_genome_image(html, out / "g", chromium_path=exe)
+    assert ">X<" in svg.read_text()          # whole-genome ruler
+
+
+def test_long_sample_id_is_wrapped_inside_the_image(tmp_path_factory):
+    exe = _skip_unless_browser()
+    out = tmp_path_factory.mktemp("long")
+    sid = "S" + "-".join(f"{i:04d}ABCDEFGH" for i in range(20))      # ~260 chars, > one line
+    html = out / "page.html"                    # sid is longer than a filename may be
+    html.write_text(render_html(PlotInputs(sample_id=sid, cnvkit=load_cnvkit_data(FIXTURES / "sample.cnr", None, None))))
+    svg, _png = render_image.render_genome_image(html, out / "l", chromium_path=exe)
+    text = svg.read_text()
+    import re
+    texts = re.findall(r"<text[^>]*font-family=\"Arial, sans-serif\"[^>]*>([^<]*)</text>", text)
+    assert "".join(t.replace(" ", "") for t in texts if "S0000" in t or "ABCDEFGH" in t).count("ABCDEFGH") >= 20
+    assert max(len(t) for t in texts) <= 150                       # none exceeds the per-line budget
+    assert len([t for t in texts if "ABCDEFGH" in t]) >= 2         # wrapped onto more than one line
 
 
 def test_cnvkit_only_viewer_initialises_and_png_button_downloads(viewer):

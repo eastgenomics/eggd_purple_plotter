@@ -149,6 +149,7 @@ const ctx = {
   URL: { createObjectURL(b) { const u = "blob:" + (n++); texts[u] = b.t; return u; }, revokeObjectURL() {} },
   document: { getElementById: noop, createElement: noop, body: noop() },
   igv: { createBrowser(_el, c) { cfg = c; return Promise.resolve({}); } },
+  location: { search: "" }, URLSearchParams,
   console, setTimeout,
 };
 ctx.window = ctx;

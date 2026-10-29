@@ -358,3 +358,14 @@ def test_cli_rejects_path_like_sample_id(tmp_path):
     ], capture_output=True, text=True)  # nosec B603 B607
     assert r.returncode != 0 and "file name" in r.stderr
     assert not (tmp_path / "victim.igv.bars.html").exists()
+
+
+def test_cli_accepts_leading_dash_sample_id_in_equals_form(tmp_path):
+    """src/code.sh passes --sample=<id>, so an ID starting with '-' is not taken for an option."""
+    r = subprocess.run([
+        "python3", str(SCRIPT), "--sample=-S001",
+        "--cnvkit_cnr", str(FIXTURES / "sample.cnr"), "--output_dir", str(tmp_path),
+    ], capture_output=True, text=True)  # nosec B603 B607
+    assert r.returncode == 0, r.stderr
+    assert (tmp_path / "-S001.igv.bars.html").exists()
+    assert '"--sample=${sample_id}"' in (SCRIPT.parents[4] / "src" / "code.sh").read_text()

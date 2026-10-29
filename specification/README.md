@@ -19,7 +19,7 @@ Given per-sample input files, the app:
 4. Reads the QC report for purity, ploidy, and QC status (if supplied; defaults to `?` if absent).
 5. Reads MSI score (if supplied; defaults to `?` if absent).
 6. Converts all available data to bedgraph/SEG strings; omits tracks for any absent input.
-7. Renders a single self-contained HTML file embedding all data as JavaScript blob URLs.
+7. Renders a single HTML file embedding igv.js and all track data (read through JavaScript blob URLs); the hg38 genome is fetched when the file is opened.
 8. Uploads the HTML file and sets it as the `igv_html` output.
 
 All data-conversion and HTML-generation logic lives in a pure Python module

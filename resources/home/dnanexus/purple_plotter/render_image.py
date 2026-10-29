@@ -67,6 +67,7 @@ def render_genome_image(
     chromium_path = chromium_path or os.environ.get("CHROMIUM_PATH") or None
     blocked: list[str] = []
     page_errors: list[str] = []
+    csp_violations: list[str] = []
 
     def diagnostics() -> str:
         parts = []
@@ -74,6 +75,8 @@ def render_genome_image(
             parts.append("requests not bundled (add to ROUTES): " + ", ".join(sorted(set(blocked))))
         if page_errors:
             parts.append("page errors: " + "; ".join(page_errors))
+        if csp_violations:
+            parts.append("Content-Security-Policy violations: " + "; ".join(csp_violations))
         return " | ".join(parts)
 
     def handle(route):
@@ -106,6 +109,12 @@ def render_genome_image(
                 lambda u: u.startswith(("http://", "https://")), handle
             )
             page.on("pageerror", lambda e: page_errors.append(str(e)))
+            # The viewer's CSP can block a request or script before routing or "pageerror"
+            # sees it; record violations so a failure names its cause.
+            page.expose_function("__ppCspViolation", lambda v: csp_violations.append(v))
+            page.add_init_script(
+                'document.addEventListener("securitypolicyviolation",'
+                ' e => window.__ppCspViolation(e.violatedDirective + " " + e.blockedURI));')
 
             # The viewer reads ?locus= before creating the browser, so the first
             # (and only) render is at `locus` and never asks the network to resolve
@@ -118,7 +127,7 @@ def render_genome_image(
                 state = page.evaluate("window.igvReady === true ? 'ready' : (window.igvError || null)")
                 if state == "ready":
                     break
-                if state or blocked or page_errors or waited >= timeout_s:
+                if state or blocked or page_errors or csp_violations or waited >= timeout_s:
                     why = f"igv.js failed to start: {state}" if state else (
                         "igv.js did not initialise" + (" (timed out)" if waited >= timeout_s else ""))
                     raise RenderError(why + (f" [{diagnostics()}]" if diagnostics() else ""))
@@ -132,7 +141,7 @@ def render_genome_image(
         finally:
             browser.close()
 
-    if blocked or page_errors:
+    if blocked or page_errors or csp_violations:
         raise RenderError(diagnostics())
     if "<svg" not in svg:
         raise RenderError("toSVG() did not return an SVG document")

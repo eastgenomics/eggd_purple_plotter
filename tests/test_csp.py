@@ -76,30 +76,34 @@ def _exercise(exe, html, offline, loci):
         try:
             page = b.new_page(viewport={"width": 1600, "height": 1000})
             page.add_init_script(INIT)
-            errors = []
+            errors, requests = [], []
             page.on("pageerror", lambda e: errors.append(str(e)))
+            page.on("request", lambda r: requests.append(r.url))
             if offline:
                 page.route(lambda u: u.startswith("http"), handle)
             page.goto(html.resolve().as_uri())
             page.wait_for_function("() => window.igvReady === true || !!window.igvError", timeout=60000)
             assert page.evaluate("window.igvError || null") is None
-            for locus, wait_ms in loci:
+            for locus, expect, wait_ms in loci:
                 page.evaluate("l => window.igvBrowser.search(l)", locus)
                 page.wait_for_timeout(wait_ms)
+                shown = page.evaluate("[].concat(window.igvBrowser.currentLoci())")
+                assert any(l.startswith(expect) for l in shown), (locus, shown)   # the search really moved
             assert page.evaluate("window.ppExport.svg()").startswith("<svg")
             assert len(page.evaluate("s => window.ppExport.png(s)", 2)) > 1000
             for btn in ("#btn-svg", "#btn-png"):        # the real click path (inline handlers would violate)
                 with page.expect_download():
                     page.click(btn)
-            return page.evaluate("window.__csp"), errors
+            return page.evaluate("window.__csp"), errors, requests
         finally:
             b.close()
 
 
 def test_csp_offline(full_html):
     exe, html = full_html
-    violations, errors = _exercise(exe, html, offline=True,
-                                   loci=[("all", 500), ("chr7", 800), ("chr7:55019017-55021017", 800)])
+    violations, errors, _ = _exercise(exe, html, offline=True, loci=[
+        ("all", "all", 500), ("chr7", "chr7", 800),
+        ("chr7:55019017-55021017", "chr7:55019017-55021017", 800)])
     assert violations == []
     assert errors == []
 
@@ -107,8 +111,12 @@ def test_csp_offline(full_html):
 @pytest.mark.skipif(os.environ.get("PP_LIVE_NETWORK") != "1", reason="set PP_LIVE_NETWORK=1 to use igv.org/UCSC")
 def test_csp_live(full_html):
     exe, html = full_html
-    violations, errors = _exercise(exe, html, offline=False, loci=[
-        ("all", 2000), ("EGFR", 5000), ("chr7:55019017-55019117", 5000),   # gene search, then base level
+    violations, errors, requests = _exercise(exe, html, offline=False, loci=[
+        ("all", "all", 2000),
+        ("EGFR", "chr7:55", 5000),                                     # gene search (igv.org MANE index)
+        ("chr7:55019017-55019117", "chr7:55019017-55019117", 5000),    # base level: sequence
     ])
     assert violations == []
     assert errors == []
+    assert any(u.startswith("https://hgdownload.soe.ucsc.edu/") and u.endswith("hg38.2bit") for u in requests)
+    assert any("ncbiRefSeq" in u for u in requests)                    # RefSeq track loaded

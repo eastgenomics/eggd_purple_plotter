@@ -186,3 +186,15 @@ def test_cnvkit_only_viewer_initialises_and_png_button_downloads(viewer):
             assert png_path.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
         finally:
             b.close()
+
+
+def test_csp_violation_is_reported(viewer, tmp_path):
+    """A script the CSP blocks (here: viewer code that no longer matches its hash) fails the render
+    promptly and names the violation, rather than timing out with no cause."""
+    exe, html, out = viewer
+    tampered = tmp_path / "t.html"
+    tampered.write_text(html.read_text(encoding="utf-8").replace(
+        '"use strict";', '"use strict"; /* changed */', 1), encoding="utf-8")
+    with pytest.raises(render_image.RenderError) as ei:
+        render_image.render_genome_image(tampered, tmp_path / "t", chromium_path=exe, timeout_s=30)
+    assert "Content-Security-Policy violations" in str(ei.value) and "script-src" in str(ei.value)

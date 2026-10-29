@@ -92,13 +92,13 @@ flowchart TD
 - Parse CLI arguments (argparse)
 - Load each input file from the local filesystem via `load_*` functions
 - Convert dataframes to bedgraph/SEG strings via conversion functions
-- Render and write the self-contained HTML file
+- Render and write the HTML file (igv.js and track data embedded)
 - Degrade gracefully: missing optional inputs produce `?` header values or omit tracks
 
 **Must NOT:**
 - Import `dxpy` or call `dx` CLI
 - Make any network requests
-- Access any path outside the arguments passed on the CLI
+- Access any path outside the arguments passed on the CLI, except its own bundled files (`viewer.js`, `assets/igv.min.js`, `assets/igv.js.LICENSE`)
 
 **Public interface:**
 

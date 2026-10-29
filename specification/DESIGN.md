@@ -26,8 +26,10 @@ directly into the existing per-sample workflow and rerun independently.
 
 ### igv.js 3.8.3
 
-- Loaded from CDN at view time: `https://igv.org/web/release/3.8.3/dist/igv.min.js`
-- Data embedded as JavaScript blob URLs (`URL.createObjectURL(new Blob([text]))`)
+- v1.0.0–v1.1.0: loaded from CDN at view time (`https://igv.org/web/release/3.8.3/dist/igv.min.js`).
+  From v1.2.0: inlined from `assets/igv.min.js` (hash-checked) with a hash-pinned CSP.
+- Data embedded as JavaScript blob URLs (`URL.createObjectURL(new Blob([text]))`); from v1.2.0 the
+  text comes from a non-executable JSON block rather than JS template literals.
 - Mounts inside a shadow DOM on the container element (relevant for Playwright testing)
 - Track types used: `wig` (bedgraph, scatter/bar), `seg`, `merged`
 - `GradientColorScale` API (3.8.3+): uses `lowColor`/`highColor` CSS strings —
@@ -238,7 +240,7 @@ all tests run locally with fixture TSV files.
 
 - [ ] `pytest tests/ -v` passes with 0 failures
 - [ ] HTML output contains `sample_id` string in title and header
-- [ ] HTML output contains `igv.org` CDN script tag
+- [ ] HTML output contains no `<script src=` (igv.js inlined from v1.2.0; v1.0.0 checked for the CDN tag)
 - [ ] When `purple_tar` absent: no PURPLE tracks in HTML (bedgraph strings are empty)
 - [ ] When `qc_report` absent: header shows purity `?` and ploidy `?`
 - [ ] When `cnvkit_*` absent: no CNVkit tracks in HTML
@@ -250,7 +252,7 @@ all tests run locally with fixture TSV files.
 
 ## 8. Limitations
 
-1. igv.js is loaded from CDN at view time — the HTML will not render without internet access.
+1. The hg38 genome and annotation are fetched from igv.org/UCSC when the HTML is opened — it will not render without internet access to those hosts. (Before v1.2.0, igv.js itself was also loaded from the igv.org CDN.)
 2. Large cohorts (>10,000 AMBER BAF sites per chromosome) produce HTML files >10 MB; this is expected and accepted.
 3. Chromosome naming is hard-coded to `chr1`–`chr22`, `chrX` — samples with non-prefixed chromosomes will produce empty tracks silently.
 4. The igv.js shadow DOM means Playwright testing must use `shadowRoot` queries — standard `document.querySelectorAll` will not find canvases.
@@ -275,6 +277,10 @@ all tests run locally with fixture TSV files.
 
 2. **Should the igv.js library be bundled offline (in `resources/`) rather than loaded from CDN?**
    *Decision for v1.0.0*: CDN load only. The HTML is intended for viewing by staff on hospital networks with internet access. Bundling igv.min.js (~1 MB) into every HTML file would roughly double file size and complicate the build.
+   *Revised for v1.2.0*: inlined (about 1.5 MB per file). The viewers are published to a web site and
+   hold patient-linked data; loading third-party code from a mutable CDN path gave igv.org full access
+   to that data, and an SRI hash would blank every viewer if the file were ever re-uploaded. Inlining
+   plus a hash-pinned CSP removes the dependency (Jira DI-4173).
 
 3. **Should the app support producing a cohort index page?**
    *Decision for v1.0.0*: No. A separate lightweight app or script is the right place for this (see `eggd_purple_plotter_plan.md` in `cnv-backbone-purple-atlas` repo).

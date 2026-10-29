@@ -4,6 +4,7 @@ import gzip
 import html as _html
 import io
 import math
+import re
 import tarfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -293,6 +294,10 @@ body {{ font-family: -apple-system, Arial, sans-serif; background: #f0f2f5; }}
         display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }}
 #hdr .ttl  {{ font-size: 15px; font-weight: 600; }}
 #hdr .meta {{ font-size: 12px; color: #9aafc4; }}
+#hdr .btns {{ margin-left: auto; display: flex; gap: 8px; }}
+#hdr button {{ font: inherit; font-size: 12px; color: #e8edf3; background: #2c3e57;
+               border: 1px solid #4a617f; border-radius: 3px; padding: 3px 10px; cursor: pointer; }}
+#hdr button:hover {{ background: #3a516f; }}
 #igv-div {{ background: white; }}
 #leg {{ background: #fff; border-top: 1px solid #dde; padding: 7px 18px;
         display: flex; flex-wrap: wrap; gap: 18px; align-items: center;
@@ -309,6 +314,10 @@ body {{ font-family: -apple-system, Arial, sans-serif; background: #f0f2f5; }}
   <span class="meta">
     Purity {purity} &nbsp;·&nbsp; Ploidy {ploidy} &nbsp;·&nbsp; {status}
     &nbsp;·&nbsp; MSI {msi_score} &nbsp;·&nbsp; {msi_status}
+  </span>
+  <span class="btns">
+    <button type="button" id="btn-svg" title="Download the current view as SVG">Save SVG</button>
+    <button type="button" id="btn-png" title="Download the current view as PNG">Save PNG</button>
   </span>
 </div>
 <div id="igv-div"></div>
@@ -468,6 +477,114 @@ igv.createBrowser(document.getElementById("igv-div"), {{
     }},
 
   ]),
+}}).then(function (b) {{
+  window.igvBrowser = b;
+  window.igvReady   = true;
+}}).catch(function (e) {{
+  window.igvError = String(e);
+  console.error(e);
+}});
+
+// ── Image export (current view) ─────────────────────────────────────────────
+// ppExport is also called by the headless renderer (render_image.py), so the
+// downloaded files and the pipeline output come from the same code path.
+const ppSampleFile = "{sample_file}";
+
+// Exported images carry the sample ID, purity/ploidy/status and MSI banner from
+// the page header, so an image is never separated from the sample it shows.
+function ppSvg() {{
+  if (!window.igvBrowser) throw new Error("IGV browser is not ready");
+  const NS = "http://www.w3.org/2000/svg", BANNER = 44;
+  const doc  = new DOMParser().parseFromString(window.igvBrowser.toSVG(), "image/svg+xml");
+  const root = doc.documentElement;
+  const [w, h] = ppSvgSize(root);
+  const body = doc.createElementNS(NS, "g");
+  body.setAttribute("transform", "translate(0," + BANNER + ")");
+  while (root.firstChild) body.appendChild(root.firstChild);
+  const bg = doc.createElementNS(NS, "rect");
+  [["x", 0], ["y", 0], ["width", w], ["height", BANNER], ["fill", "#1a2638"]]
+    .forEach(function (kv) {{ bg.setAttribute(kv[0], kv[1]); }});
+  function line(txt, y, size, fill, weight) {{
+    const t = doc.createElementNS(NS, "text");
+    [["x", 12], ["y", y], ["font-family", "Arial, sans-serif"], ["font-size", size],
+     ["font-weight", weight], ["fill", fill]].forEach(function (kv) {{ t.setAttribute(kv[0], kv[1]); }});
+    t.textContent = txt;
+    return t;
+  }}
+  const clean = function (sel) {{ return document.querySelector(sel).textContent.replace(/\\s+/g, " ").trim(); }};
+  root.appendChild(bg);
+  root.appendChild(line(clean("#hdr .ttl"), 18, 14, "#e8edf3", "bold"));
+  root.appendChild(line(clean("#hdr .meta"), 36, 12, "#9aafc4", "normal"));
+  root.appendChild(body);
+  root.setAttribute("height", h + BANNER);
+  root.setAttribute("viewBox", "0 0 " + w + " " + (h + BANNER));
+  return new XMLSerializer().serializeToString(root);
+}}
+
+function ppSvgSize(root) {{
+  const vb = (root.getAttribute("viewBox") || "").split(/[\\s,]+/).map(Number);
+  const w = parseFloat(root.getAttribute("width"))  || vb[2];
+  const h = parseFloat(root.getAttribute("height")) || vb[3];
+  if (!(w > 0 && h > 0)) throw new Error("SVG has no usable size");
+  return [w, h];
+}}
+
+function ppPng(scale) {{
+  scale = scale || 2;
+  const svgText = ppSvg();
+  const [w, h] = ppSvgSize(new DOMParser().parseFromString(svgText, "image/svg+xml").documentElement);
+  const url = URL.createObjectURL(new Blob([svgText], {{ type: "image/svg+xml;charset=utf-8" }}));
+  return new Promise(function (resolve, reject) {{
+    const img = new Image();
+    img.onload = function () {{
+      const c = document.createElement("canvas");
+      c.width = Math.round(w * scale); c.height = Math.round(h * scale);
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      c.toBlob(function (blob) {{ blob ? resolve(blob) : reject(new Error("PNG encode failed")); }}, "image/png");
+    }};
+    img.onerror = function () {{ URL.revokeObjectURL(url); reject(new Error("SVG could not be rasterised")); }};
+    img.src = url;
+  }});
+}}
+
+function ppDownload(blob, name) {{
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function () {{ URL.revokeObjectURL(a.href); }}, 1000);
+}}
+
+function ppLocusTag() {{
+  const l = window.igvBrowser && window.igvBrowser.currentLoci && window.igvBrowser.currentLoci();
+  const t = String(Array.isArray(l) ? l[0] : (l || "view")).replace(/[^A-Za-z0-9._-]+/g, "_");
+  return t || "view";
+}}
+
+window.ppExport = {{
+  svg: ppSvg,
+  png: function (scale) {{
+    return ppPng(scale).then(function (blob) {{
+      return new Promise(function (resolve, reject) {{
+        const r = new FileReader();
+        r.onload  = function () {{ resolve(String(r.result).split(",")[1]); }};
+        r.onerror = function () {{ reject(r.error); }};
+        r.readAsDataURL(blob);
+      }});
+    }});
+  }},
+}};
+
+document.getElementById("btn-svg").addEventListener("click", function () {{
+  try {{
+    ppDownload(new Blob([ppSvg()], {{ type: "image/svg+xml" }}), ppSampleFile + "." + ppLocusTag() + ".svg");
+  }} catch (e) {{ alert("Could not export SVG: " + e.message); }}
+}});
+document.getElementById("btn-png").addEventListener("click", function () {{
+  ppPng(2).then(function (blob) {{ ppDownload(blob, ppSampleFile + "." + ppLocusTag() + ".png"); }})
+          .catch(function (e) {{ alert("Could not export PNG: " + e.message); }});
 }});
 </script>
 </body>
@@ -518,8 +635,11 @@ def render_html(inputs: "PlotInputs") -> str:
                      .replace('"', '\\"')
                      .replace("</", "<\\/"))  # prevent </script> injection
 
+    sample_file = re.sub(r"[^A-Za-z0-9._-]+", "_", inputs.sample_id) or "sample"
+
     return HTML_BARS.format(
         sample               = sample_html,
+        sample_file          = sample_file,
         purity               = purity_str,
         ploidy               = ploidy_str,
         status               = _html.escape(inputs.qc.status),

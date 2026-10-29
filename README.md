@@ -86,6 +86,34 @@ python3 -m venv .venv
 open /tmp/26134S0005.igv.bars.html
 ```
 
+### Export an image of the whole-genome view
+
+The viewer header has **Save SVG** and **Save PNG** buttons. They export the
+current view (whatever locus is on screen) with a banner carrying the sample ID,
+purity, ploidy, status and MSI, so an image is never separated from its sample.
+
+For a file without opening a browser, render the whole-genome view headlessly:
+
+```bash
+.venv/bin/pip install playwright==1.64.1          # not needed by the app itself
+.venv/bin/python3 resources/home/dnanexus/purple_plotter/render_image.py \
+    --html /tmp/26134S0005.igv.bars.html \
+    --out_prefix /tmp/26134S0005.genome \
+    --chromium_path /usr/bin/chromium            # or set $CHROMIUM_PATH
+# -> /tmp/26134S0005.genome.svg, /tmp/26134S0005.genome.png
+```
+
+No network is used: igv.js and the hg38 chromosome/cytoband files are served from
+`resources/home/dnanexus/purple_plotter/assets/` (see its README). The image has
+no gene-annotation track.
+
+On DNAnexus, set `genome_image=true` to also get `{sample_id}.genome.png` and
+`.svg` outputs. Playwright and Chromium come from the `pp_headless_chromium` asset
+(source in `asset/`; build once with `dx build_asset asset -d <project>:<folder>`,
+then reference the record under `runSpec.assetDepends` in `dxapp.json`). The
+Makefile was verified in a clean `ubuntu:24.04` container: ~440 MB installed,
+renders as a non-root user with networking disabled.
+
 ### Run on DNAnexus
 
 ```bash
@@ -149,6 +177,9 @@ pip download pandas \
 ```bash
 # Run all tests
 .venv/bin/pytest tests/ -v
+
+# Image-rendering tests run only if playwright and a Chromium are available
+# (CHROMIUM_PATH=/usr/bin/chromium); otherwise they are skipped.
 
 # Check no dxpy in the Python module
 grep "import dxpy\|from dxpy" resources/home/dnanexus/purple_plotter/purple_plotter.py

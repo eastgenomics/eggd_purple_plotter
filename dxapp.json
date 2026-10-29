@@ -69,10 +69,20 @@
       "optional": true,
       "default": "all",
       "help": "Initial genomic locus displayed when the viewer opens (e.g. chr7:116672196-117120285). Defaults to 'all' (whole genome)."
+    },
+    {
+      "name": "genome_image",
+      "class": "boolean",
+      "label": "Also output whole-genome PNG/SVG",
+      "optional": true,
+      "default": false,
+      "help": "If true, also render the whole-genome view (locus 'all', independent of the locus input) to {sample_id}.genome.png and {sample_id}.genome.svg using headless Chromium from the pp_headless_chromium asset. The image carries a banner with sample ID, purity, ploidy, status and MSI. The job fails if rendering fails."
     }
   ],
   "outputSpec": [
-    { "name": "igv_html", "class": "file", "label": "IGV bars HTML viewer" }
+    { "name": "igv_html",   "class": "file", "label": "IGV bars HTML viewer" },
+    { "name": "genome_png", "class": "file", "label": "Whole-genome view (PNG)", "optional": true },
+    { "name": "genome_svg", "class": "file", "label": "Whole-genome view (SVG)", "optional": true }
   ],
   "runSpec": {
     "distribution": "Ubuntu",

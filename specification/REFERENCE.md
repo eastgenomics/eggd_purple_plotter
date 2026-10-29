@@ -6,10 +6,10 @@
 |---|---|---|---|---|
 | `sample_id` | `string` | No | — | Sample identifier; used in HTML title, header, and output filename |
 | `purple_tar` | `file` | Yes | — | `{sample}.purple.tar.gz` from the PURPLE pipeline stage |
-| `qc_report` | `file` | Yes | — | `{sample}.qc_report.tsv` from the cgp-qc-flags stage |
+| `qc_report` | `file` | Yes | — | Purity/ploidy TSV: PURPLE final-pass `{sample}.purple.purity.tsv` (`eggd_cgp-purple` `purity_tsv`) or a compatible report, e.g. `{sample}.qc_report.tsv` |
 | `cnvkit_cnr` | `file` | Yes | — | `{sample}.cnr` from the CNVkit pipeline |
 | `cnvkit_call_cns` | `file` | Yes | — | `{sample}.call.cns` from CNVkit |
-| `cnvkit_genemetrics` | `file` | Yes | — | `{sample}.genemetrics.csv` from CNVkit |
+| `cnvkit_genemetrics` | `file` | Yes | — | `{sample}.genemetrics.tsv` (CNVkit batch v2.1.0) or `{sample}.genemetrics.csv`; both tab-separated |
 | `msi_report` | `file` | Yes | — | `{sample}.msi.tsv` from the MSI stage |
 | `locus` | `string` | Yes | `"all"` | Initial IGV locus; any valid IGV locus string (e.g. `"chr7:116,672,196-117,120,285"`) |
 
@@ -69,9 +69,10 @@ The loader tries the `.gz` suffix for the BAF file first, then falls back to pla
 
 ---
 
-### 3.2 QC report (`qc_report`)
+### 3.2 Purity/ploidy report (`qc_report`)
 
-Tab-separated, one header row + one data row.
+Tab-separated; the first data row is used and columns other than these are ignored. PURPLE's
+final-pass `{sample}.purple.purity.tsv` qualifies, as does a compatible `qc_report.tsv`.
 
 ```
 purity	ploidy	status
@@ -80,9 +81,14 @@ purity	ploidy	status
 
 | Column | Type | Description |
 |---|---|---|
-| `purity` | float | Tumour purity (0–1) |
-| `ploidy` | float | Average ploidy |
-| `status` | string | `NORMAL`, `FAIL_CONTAMINATION`, etc. |
+| `purity` | float, required | Tumour purity (0–1) |
+| `ploidy` | float, required | Average ploidy; fractional values are used as is (denominator of log₂(CN/ploidy)) |
+| `status` | string, optional | Shown as **Fit status**, e.g. `NORMAL`, `NO_TUMOR`; blank/missing → `UNKNOWN`. Not a QC verdict |
+
+No file: purity/ploidy/fit status show `?`; segment tracks assume ploidy 2.0, with a visible
+warning. A supplied file fails with a clear error rather than falling back if it is missing,
+empty, unreadable or not tab-separated, lacks numeric purity/ploidy, has a first data row whose
+field count differs from the header, or has purity outside 0–1 or ploidy below 0.1.
 
 ---
 
@@ -133,7 +139,8 @@ Tab-separated. Standard CNVkit `.call.cns` format.
 
 ### 3.6 CNVkit genemetrics (`cnvkit_genemetrics`)
 
-Comma-separated (`.csv`). Standard CNVkit genemetrics output.
+Tab-separated, whether named `.genemetrics.tsv` (CNVkit batch v2.1.0) or the older
+`.genemetrics.csv` (CNVkit wrote tabs despite the extension).
 
 | Column | Type | Description |
 |---|---|---|

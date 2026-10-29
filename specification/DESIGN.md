@@ -109,8 +109,9 @@ def load_purple_data(purple_tar: Path, sample_id: str) -> PurpleData:
     """Extract amber.baf.tsv, target_region_cn.tsv, purple.segment.tsv from tar.gz."""
     ...
 
-def load_qc_data(qc_report: Path) -> QCData:
-    """Parse purity, ploidy, status from qc_report.tsv. Returns defaults on missing file."""
+def load_qc_data(qc_report: Path | None) -> QCData:
+    """Parse purity, ploidy, fit status from a purity/ploidy TSV (PURPLE purity.tsv or compatible).
+    None → defaults (loaded=False). A supplied but unusable file raises InputError."""
     ...
 
 def load_msi_data(msi_report: Path | None) -> MSIData:
@@ -167,7 +168,7 @@ class PurpleData:
 class QCData:
     purity: float  = 0.5       # fraction (0–1)
     ploidy: float  = 2.0       # average ploidy
-    status: str    = "UNKNOWN" # e.g. "NORMAL", "FAIL_CONTAMINATION"
+    status: str    = "UNKNOWN" # fit status from the supplied file, e.g. "NORMAL", "NO_TUMOR" (not a QC verdict)
 
 @dataclass
 class MSIData:
@@ -209,6 +210,7 @@ class PlotInputs:
 | Neither `purple_tar` nor `cnvkit_cnr` provided | `code.sh` exits 1 before calling Python | `code.sh` |
 | Tar archive missing expected file | `RuntimeError` with clear message (file suffix + sample) | `load_purple_data` |
 | TSV missing expected column | `KeyError` propagates; job fails with traceback | conversion functions |
+| `qc_report` supplied but missing, empty, comma-separated, or without numeric purity/ploidy | `InputError` with a clear message; CLI exits 1 (never the no-report fallback) | `load_qc_data` |
 | Optional file path is `None` | Function returns empty string `""` or `None` dataframe; track omitted | `load_*` functions |
 | `windowTumorRatio ≤ 0.05` | Row skipped silently (noisy low-coverage region) | `coverage_log2_bedgraph` |
 | `tumorCopyNumber ≤ 0` | Row skipped silently (uncallable region) | `cn_bars_by_state`, `to_seg` |
@@ -242,7 +244,8 @@ all tests run locally with fixture TSV files.
 - [ ] HTML output contains `sample_id` string in title and header
 - [ ] HTML output contains no `<script src=` (igv.js inlined from v1.2.0; v1.0.0 checked for the CDN tag)
 - [ ] When `purple_tar` absent: no PURPLE tracks in HTML (bedgraph strings are empty)
-- [ ] When `qc_report` absent: header shows purity `?` and ploidy `?`
+- [ ] When `qc_report` absent: header shows purity `?` and ploidy `?`, and warns that ploidy 2.0 is assumed for segment rendering
+- [ ] Supplied `status` is labelled "Fit status", not presented as a QC result
 - [ ] When `cnvkit_*` absent: no CNVkit tracks in HTML
 - [ ] When `msi_report` absent: header shows MSI `?`
 - [ ] `code.sh` exits 1 when neither `purple_tar` nor `cnvkit_cnr` is set (tested via bats or bash -c)
@@ -263,7 +266,7 @@ all tests run locally with fixture TSV files.
 
 ## 9. Use cases
 
-1. **Primary**: A clinical bioinformatician submits a PURPLE workflow run; `eggd_purple_plotter` runs as the final stage and produces an IGV bars HTML for immediate review.
+1. **Primary**: A clinical bioinformatician submits a PURPLE workflow run; `eggd_purple_plotter` runs as the final stage and produces an IGV bars HTML for immediate review. For the planned Atlas CNV workflow v2.0.0 (not yet built or signed off) the intended link is `stage-purple.purity_tsv` → `qc_report`, with `.genemetrics.tsv` from CNVkit batch v2.1.0.
 2. **Secondary**: A bioinformatician reruns the plotter stage alone after PURPLE reports a purity change, without rerunning the full workflow.
 3. **Secondary**: The app is run with only CNVkit inputs (no PURPLE tar) for a sample where PURPLE did not converge.
 4. **Non-use-case**: Running on a cohort in batch — use a submission script calling the app per-sample in parallel instead.

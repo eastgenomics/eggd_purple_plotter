@@ -12,7 +12,7 @@ Given per-sample input files, the app:
 
 1. Validates that at least one of `purple_tar` or `cnvkit_cnr` is present
 2. Extracts the PURPLE tar archive (AMBER BAF, target-region CN, PURPLE segments)
-3. Reads purity, ploidy, and QC status from the QC report (defaults to `?` if absent)
+3. Reads purity, ploidy and the fit status from the purity/ploidy report (PURPLE `purity.tsv` or compatible). If none is supplied, purity, ploidy and fit status show `?` and a warning states that ploidy 2.0 is assumed for the CN/ploidy segment tracks
 4. Reads MSI score (defaults to `?` if absent)
 5. Converts all available data to BEDGraph/SEG strings
 6. Renders a single HTML file with up to 7 igv.js tracks (igv.js and track data embedded)
@@ -29,13 +29,33 @@ Missing optional inputs are handled gracefully — tracks are simply omitted.
 | `sample_id` | string | ✅ | Sample identifier; also the output file name, so it must not contain `/`, `\` or NUL, or be `.`/`..` (the job fails otherwise) |
 | `purple_tar` | file | one of these two | `{sample}.purple.tar.gz` from the PURPLE pipeline stage |
 | `cnvkit_cnr` | file | one of these two | `{sample}.cnr` from CNVkit |
-| `qc_report` | file | — | `{sample}.qc_report.tsv` (purity, ploidy, status) |
+| `qc_report` | file | — | Purity/ploidy TSV: PURPLE's final-pass `{sample}.purple.purity.tsv`, or a compatible report such as `{sample}.qc_report.tsv`. See [Purity, ploidy and fit status](#purity-ploidy-and-fit-status) |
 | `cnvkit_call_cns` | file | — | `{sample}.call.cns` from CNVkit |
-| `cnvkit_genemetrics` | file | — | `{sample}.genemetrics.csv` from CNVkit |
+| `cnvkit_genemetrics` | file | — | `{sample}.genemetrics.tsv` (CNVkit batch v2.1.0) or the older `{sample}.genemetrics.csv`; both tab-separated |
 | `msi_report` | file | — | `{sample}.msi.tsv` |
 | `locus` | string | — | Initial IGV locus (default: `all`) |
 
 At least one of `purple_tar` or `cnvkit_cnr` must be supplied. The app exits with an error if both are absent.
+
+### Purity, ploidy and fit status
+
+- `qc_report` takes any tab-separated file whose **first row** has numeric `purity` and `ploidy`
+  columns; other columns are ignored. This includes PURPLE's final-pass
+  `{sample}.purple.purity.tsv` (output `purity_tsv` of `eggd_cgp-purple` v1.0.1). Fractional
+  ploidy is used as is: PURPLE segments are drawn as log₂(CN / ploidy), and so are CNVkit called
+  segments that carry a `cn` value.
+- `status`, if present, is shown as **Fit status** (blank or missing → `UNKNOWN`). It is the fit
+  status from that file, for example `NORMAL` or `NO_TUMOR`. It is **not** a QC pass/fail
+  assessment: the plotter does not evaluate PURPLE's QC file or `eggd_cgp-qc-flags` flags.
+- With no `qc_report`, purity, ploidy and fit status show `?`, and the CN/ploidy segment tracks
+  use ploidy **2.0**. That is a rendering assumption, not a measured ploidy, and the viewer
+  header and exported images say so.
+- A supplied file fails the job, with a message naming the problem, if it is missing, empty or
+  unreadable; is not tab-separated; has no numeric `purity`/`ploidy`; has a first data row whose
+  field count differs from the header; or has purity outside 0–1 or ploidy below 0.1 (the
+  segment conversion cannot draw a smaller ploidy as given). It is never treated as "no report".
+- Intended Atlas CNV workflow v2.0.0 link (not yet built or signed off):
+  `stage-purple.purity_tsv` → `stage-purple_plotter.qc_report`.
 
 ## Output
 
@@ -220,7 +240,7 @@ prints the two `sha256-…` values. For v1.2.0:
 | Script | Hash |
 |---|---|
 | igv.js 3.8.3 | `sha256-rPTumc3JG+iEIDkw25w5W8hiZ1UpM7SD2gtgnBbqBao=` |
-| viewer.js | `sha256-GjFxjH7HR881OR5AW6GaTKGxXSazG6uY5FyT1D/KmKw=` |
+| viewer.js | `sha256-wRBeBVpKrnaYKFFH3TRctA66RaAG26oFL38OtBX3K9U=` |
 
 Any change to `viewer.js` or `igv.min.js` changes these; record the new values with each release.
 

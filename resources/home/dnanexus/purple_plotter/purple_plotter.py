@@ -522,8 +522,17 @@ def render_html(inputs: "PlotInputs") -> str:
     )
 
 
+def check_sample_id_for_filename(sample_id: str) -> None:
+    """The output is {sample_id}.igv.bars.html (here and in src/code.sh), so the ID must be a
+    plain file name: no path separators, NUL, or "." / ".."."""
+    if not sample_id or sample_id in (".", "..") or any(c in sample_id for c in "/\\\0"):
+        raise ValueError(f"sample ID {sample_id!r} cannot be used as a file name "
+                         "(it must not be empty, '.', '..', or contain '/', '\\' or NUL)")
+
+
 def write_html(inputs: "PlotInputs", output_dir: Path) -> Path:
     """Render HTML and write to {output_dir}/{sample_id}.igv.bars.html."""
+    check_sample_id_for_filename(inputs.sample_id)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     out = output_dir / f"{inputs.sample_id}.igv.bars.html"
@@ -557,6 +566,10 @@ def main() -> None:
         return
     if not args.sample:
         ap.error("--sample is required")
+    try:
+        check_sample_id_for_filename(args.sample)
+    except ValueError as e:
+        ap.error(str(e))
 
     if args.purple_tar is None and args.cnvkit_cnr is None:
         ap.error(

@@ -12,7 +12,7 @@
       "name": "sample_id",
       "class": "string",
       "label": "Sample ID",
-      "help": "Sample identifier used in the output filename and HTML header."
+      "help": "Sample identifier used in the output filename and HTML header. Must be a plain file name: no '/', '\\' or NUL, and not '.' or '..'."
     },
     {
       "name": "purple_tar",

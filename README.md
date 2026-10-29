@@ -26,7 +26,7 @@ Missing optional inputs are handled gracefully — tracks are simply omitted.
 
 | Name | Class | Required | Description |
 |---|---|---|---|
-| `sample_id` | string | ✅ | Sample identifier |
+| `sample_id` | string | ✅ | Sample identifier; also the output file name, so it must not contain `/`, `\` or NUL, or be `.`/`..` (the job fails otherwise) |
 | `purple_tar` | file | one of these two | `{sample}.purple.tar.gz` from the PURPLE pipeline stage |
 | `cnvkit_cnr` | file | one of these two | `{sample}.cnr` from CNVkit |
 | `qc_report` | file | — | `{sample}.qc_report.tsv` (purity, ploidy, status) |
@@ -168,8 +168,9 @@ Every generated viewer has the same structure:
 4. The viewer code, inlined from `resources/home/dnanexus/purple_plotter/viewer.js`.
 
 Items 3 and 4 are **byte-identical for every sample**. igv.js builds click popups as HTML from
-raw values, so `viewer.js` supplies its own popup content with every value HTML-escaped (the
-CSP stops scripts, not injected markup); the per-sample HTML-context values
+raw values, so for the tracks built from the embedded data (seg, wig, merged) `viewer.js`
+supplies its own popup content with every value HTML-escaped (the CSP stops scripts, not
+injected markup); the RefSeq annotation keeps igv.js's own popup; the per-sample HTML-context values
 (`<title>`, header) are HTML-escaped. Tabs, CR and LF in the sample ID are replaced with `_`
 in the SEG track data, where the ID is a tab-delimited column. The CSP lets only those two scripts run, by hash:
 
@@ -219,7 +220,7 @@ prints the two `sha256-…` values. For v1.2.0:
 | Script | Hash |
 |---|---|
 | igv.js 3.8.3 | `sha256-rPTumc3JG+iEIDkw25w5W8hiZ1UpM7SD2gtgnBbqBao=` |
-| viewer.js | `sha256-7Sg2z/jgCX31CI12ICC1nuw6nx1TUFlAeqt0sXN2kgU=` |
+| viewer.js | `sha256-GjFxjH7HR881OR5AW6GaTKGxXSazG6uY5FyT1D/KmKw=` |
 
 Any change to `viewer.js` or `igv.min.js` changes these; record the new values with each release.
 

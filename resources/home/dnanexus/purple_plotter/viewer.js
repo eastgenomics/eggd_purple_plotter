@@ -27,15 +27,19 @@ const cnvkitGenemetricsBg = ppData.cnvkit_gm_bg;
 const segData            = ppData.seg_data;
 
 // Click popups. igv.js builds them as HTML from raw values, so a sample ID such as
-// "S<b>x</b>" would become markup (the CSP stops scripts, not markup). Every value is
-// HTML-escaped here, in the same layout igv.js uses, and returned as the popup content.
+// "S<b>x</b>" in a SEG track would become markup (the CSP stops scripts, not markup).
+// For the tracks built from this file's embedded data (seg, wig, merged) every value is
+// HTML-escaped here, in the same layout igv.js uses. Other tracks (the genome's RefSeq
+// annotation, whose popups contain igv.js's own links and separators) keep igv.js's popup.
+const PP_DATA_TRACK_TYPES = new Set(["seg", "wig", "merged"]);
 function ppEsc(v) {
   return String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
                   .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 function ppPopup(track, data) {
-  if (!Array.isArray(data) || data.length === 0) return false;     // false: no popup
+  if (!track || !PP_DATA_TRACK_TYPES.has(track.type)) return undefined;   // undefined: igv.js default popup
+  if (!Array.isArray(data) || data.length === 0) return false;           // false: no popup
   return data.map(function (d) {
     if (d === "<hr>" || d === "<hr/>") return "<hr>";
     if (d && typeof d === "object" && d.name !== undefined) {

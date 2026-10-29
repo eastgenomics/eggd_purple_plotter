@@ -299,3 +299,62 @@ def test_hostile_sample_ids(tmp_path, sid):
     plain = render_html(PlotInputs(sample_id="S001"))
     q = Scripts(); q.feed(plain)
     assert [b for t, b in p.blocks if t is None] == [b for t, b in q.blocks if t is None]
+
+
+POPUP_HARNESS = r"""
+const fs = require("fs");
+const html = fs.readFileSync(process.argv[2], "utf8");
+const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+const dataJson = html.match(/<script type="application\/json" id="pp-data">([\s\S]*?)<\/script>/)[1];
+const noop = () => ({ addEventListener() {}, appendChild() {}, remove() {}, click() {} });
+const ctx = {
+  Blob: class { constructor(p) { this.t = p.join(""); } },
+  URL: { createObjectURL() { return "blob:x"; }, revokeObjectURL() {} },
+  document: { getElementById: (id) => id === "pp-data" ? { textContent: dataJson } : noop(),
+              createElement: noop, body: noop() },
+  igv: { createBrowser() { return new Promise(() => {}); } },
+  location: { search: "" }, URLSearchParams, console, setTimeout,
+};
+ctx.window = ctx;
+require("vm").runInNewContext(scripts[scripts.length - 1], ctx);
+const hostile = [{ name: "Sample", value: 'S<b id="x">"' }, "<hr/>", { name: "Value", value: 0.5 }];
+process.stdout.write(JSON.stringify({
+  seg: ctx.ppPopup({ type: "seg" }, hostile),
+  wig: ctx.ppPopup({ type: "wig" }, [{ name: "a<i>", value: 1 }]),
+  annotation: ctx.ppPopup({ type: "annotation" }, [{ name: "Name", value: "<a href='x'>EGFR</a>" }]) === undefined,
+  empty: ctx.ppPopup({ type: "seg" }, []),
+}));
+"""
+
+
+def test_popup_escapes_data_tracks_and_leaves_annotation_to_igv(tmp_path):
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    page = tmp_path / "page.html"
+    page.write_text(render_html(PlotInputs(sample_id="S001")), encoding="utf-8")
+    h = tmp_path / "popup.js"
+    h.write_text(POPUP_HARNESS)
+    out = json.loads(subprocess.run([node, str(h), str(page)], capture_output=True, text=True,
+                                    check=True).stdout)  # nosec B603
+    assert "<b" not in out["seg"] and "S&lt;b id=&quot;x&quot;&gt;&quot;" in out["seg"]
+    assert out["seg"].count("<hr>") == 1 and "<span>Value</span>" in out["seg"]
+    assert "a&lt;i&gt;" in out["wig"]
+    assert out["annotation"] is True          # RefSeq popups keep igv.js's own links/separators
+    assert out["empty"] is False
+
+
+@pytest.mark.parametrize("sid", ["../victim", "/tmp/abs", "a\\b", "..", ".", "", "a\0b"])
+def test_sample_id_must_be_a_plain_file_name(tmp_path, sid):
+    with pytest.raises(ValueError):
+        write_html(PlotInputs(sample_id=sid), tmp_path / "out")
+    assert not (tmp_path / "victim.igv.bars.html").exists()
+
+
+def test_cli_rejects_path_like_sample_id(tmp_path):
+    r = subprocess.run([
+        "python3", str(SCRIPT), "--sample", "../victim",
+        "--cnvkit_cnr", str(FIXTURES / "sample.cnr"), "--output_dir", str(tmp_path / "out"),
+    ], capture_output=True, text=True)  # nosec B603 B607
+    assert r.returncode != 0 and "file name" in r.stderr
+    assert not (tmp_path / "victim.igv.bars.html").exists()

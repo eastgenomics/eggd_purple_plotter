@@ -155,8 +155,12 @@ ctx.window = ctx;
 require("vm").runInNewContext(scripts.join("\n"), ctx);
 const flat = (t) => (t.tracks || [t]).map(c => ({ empty: !texts[c.url].trim() }));
 const nonempty = Object.values(texts).filter(t => t.trim()).length;
+const segSamples = Object.values(texts).filter(t => t.startsWith("SampleID\t"))
+  .map(t => t.split("\n")[1].split("\t")[0]);
 process.stdout.write(JSON.stringify({
   nonempty,
+  injected: ctx.INJECTED === undefined ? null : String(ctx.INJECTED),
+  segSamples,
   tracks: cfg.tracks.map(t => ({ name: t.name, children: flat(t) })),
 }));
 """
@@ -171,11 +175,13 @@ def _tracks_for(tmp_path, **kw):
     node = shutil.which("node")
     if node is None:
         pytest.skip("node not available")
-    out = write_html(PlotInputs(sample_id="S001", **kw), tmp_path)
+    kw.setdefault("sample_id", "S001")
+    out = write_html(PlotInputs(**kw), tmp_path)
     harness = tmp_path / "harness.js"
     harness.write_text(HARNESS)
     res = subprocess.run([node, str(harness), str(out)], capture_output=True, text=True, check=True)  # nosec B603
     parsed = json.loads(res.stdout)
+    _tracks_for.last = parsed
     kept = sum(len(t["children"]) for t in parsed["tracks"])
     assert kept == parsed["nonempty"], f"{kept} tracks kept but {parsed['nonempty']} blobs have data"
     return parsed["tracks"]
@@ -221,3 +227,12 @@ def test_full_inputs_keep_all_tracks(tmp_path):
     _assert_no_empty_tracks(tracks)
     assert len(tracks) == 7
     assert sum(len(t["children"]) for t in tracks) > 7   # merged tracks keep their several children
+
+
+def test_sample_id_backslash_cannot_break_out_of_js_template_literal(tmp_path):
+    """A backslash before ${ must not turn the interpolation back on (script injection)."""
+    sid = "A\\${globalThis.INJECTED=123}\\`B"
+    _tracks_for(tmp_path, sample_id=sid, purple=_purple(tmp_path))
+    out = _tracks_for.last
+    assert out["injected"] is None
+    assert out["segSamples"] and all(s == sid for s in out["segSamples"])

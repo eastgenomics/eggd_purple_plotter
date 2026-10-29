@@ -484,6 +484,7 @@ def render_html(inputs: "PlotInputs") -> str:
     # Sanitise sample_id for backtick JS literal context (used in seg/CNVkit SEG strings)
     # Also escape </ to prevent </script> breaking out of the inline <script> block
     sample_js = (inputs.sample_id
+                 .replace("\\", "\\\\")   # backslash first, or it would un-escape the rest
                  .replace("`", "\\`")
                  .replace("${" , "\\${")
                  .replace("</", "<\\/"))

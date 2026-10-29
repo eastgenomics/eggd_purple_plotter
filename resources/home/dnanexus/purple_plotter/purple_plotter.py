@@ -501,12 +501,14 @@ function ppWrap(txt, font, maxPx) {{
   const fits = function (t) {{ return ctx.measureText(t).width * 1.05 <= maxPx; }};   // 5% safety for font fallback
   const lines = []; let cur = "";
   txt.split(" ").forEach(function (word) {{
-    while (!fits(word) && word.length > 1) {{
+    let chars = Array.from(word);        // code points, so a surrogate pair is never split
+    while (!fits(chars.join("")) && chars.length > 1) {{
       if (cur) {{ lines.push(cur); cur = ""; }}
-      let n = word.length - 1;
-      while (n > 1 && !fits(word.slice(0, n))) n--;
-      lines.push(word.slice(0, n)); word = word.slice(n);
+      let n = chars.length - 1;
+      while (n > 1 && !fits(chars.slice(0, n).join(""))) n--;
+      lines.push(chars.slice(0, n).join("")); chars = chars.slice(n);
     }}
+    word = chars.join("");
     if (cur && !fits(cur + " " + word)) {{ lines.push(cur); cur = word; }}
     else cur = cur ? cur + " " + word : word;
   }});

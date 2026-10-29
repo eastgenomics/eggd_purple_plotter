@@ -98,6 +98,7 @@ def test_gene_name_initial_locus_does_not_need_network(tmp_path_factory):
 @pytest.mark.parametrize("sid", [
     "S" + "-".join(f"{i:04d}ABCDEFGH" for i in range(20)),     # long, breakable at hyphens only
     "W" * 140,                                                  # one very wide unbreakable token
+    "\U0001F600" * 90,                                           # astral characters: never split a surrogate pair
 ])
 def test_long_sample_id_is_wrapped_inside_the_image(tmp_path_factory, sid):
     """Every banner line, measured as rendered by Chromium, must fit inside the image width."""
@@ -108,7 +109,11 @@ def test_long_sample_id_is_wrapped_inside_the_image(tmp_path_factory, sid):
     html.write_text(render_html(PlotInputs(sample_id=sid, cnvkit=load_cnvkit_data(FIXTURES / "sample.cnr", None, None))))
     svg, _png = render_image.render_genome_image(html, out / "l", chromium_path=exe)
     text = svg.read_text()
-    assert text.count("W") >= 140 if sid.startswith("W") else text.count("ABCDEFGH") >= 20
+    import re
+    lines = re.findall(r"<text[^>]*font-weight=\"bold\"[^>]*>([^<]*)</text>", text)
+    banner = "".join(lines).replace(" ", "")
+    assert "\ufffd" not in text
+    assert sid.replace(" ", "") in banner, "sample ID not preserved across wrapped lines"
 
     with sync_playwright() as p:
         b = p.chromium.launch(executable_path=exe, args=["--no-sandbox"])
@@ -136,7 +141,7 @@ def test_banner_states_genome_and_locus(tmp_path_factory):
     svg, _ = render_image.render_genome_image(html, out / "w", chromium_path=exe)
     assert "Genome hg38" in svg.read_text() and "Locus: all" in svg.read_text()
     svg2, _ = render_image.render_genome_image(html, out / "r", chromium_path=exe, locus="chr7:116,672,196-117,120,285")
-    assert "chr7:" in svg2.read_text().split("Locus:")[1][:60]
+    assert "Locus: chr7:116672196-117120285" in svg2.read_text()
 
 
 def test_cnvkit_only_viewer_initialises_and_png_button_downloads(viewer):

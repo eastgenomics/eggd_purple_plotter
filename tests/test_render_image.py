@@ -139,7 +139,7 @@ def test_banner_states_genome_and_locus(tmp_path_factory):
     out = tmp_path_factory.mktemp("locus")
     html = write_html(PlotInputs(sample_id="LOC", cnvkit=load_cnvkit_data(FIXTURES / "sample.cnr", None, None)), out)
     svg, _ = render_image.render_genome_image(html, out / "w", chromium_path=exe)
-    assert "Genome hg38" in svg.read_text() and "Locus: all" in svg.read_text()
+    assert "Genome hg38" in svg.read_text() and "Locus: all (whole genome)" in svg.read_text()
     svg2, _ = render_image.render_genome_image(html, out / "r", chromium_path=exe, locus="chr7:116,672,196-117,120,285")
     assert "Locus: chr7:116672196-117120285" in svg2.read_text()
 

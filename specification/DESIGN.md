@@ -109,8 +109,9 @@ def load_purple_data(purple_tar: Path, sample_id: str) -> PurpleData:
     """Extract amber.baf.tsv, target_region_cn.tsv, purple.segment.tsv from tar.gz."""
     ...
 
-def load_qc_data(qc_report: Path) -> QCData:
-    """Parse purity, ploidy, status from qc_report.tsv. Returns defaults on missing file."""
+def load_qc_data(qc_report: Path | None) -> QCData:
+    """Parse purity, ploidy, fit status from a purity/ploidy TSV (PURPLE purity.tsv or compatible).
+    None → defaults (loaded=False). A supplied but unusable file raises InputError."""
     ...
 
 def load_msi_data(msi_report: Path | None) -> MSIData:
@@ -209,6 +210,7 @@ class PlotInputs:
 | Neither `purple_tar` nor `cnvkit_cnr` provided | `code.sh` exits 1 before calling Python | `code.sh` |
 | Tar archive missing expected file | `RuntimeError` with clear message (file suffix + sample) | `load_purple_data` |
 | TSV missing expected column | `KeyError` propagates; job fails with traceback | conversion functions |
+| `qc_report` supplied but missing, empty, comma-separated, or without numeric purity/ploidy | `InputError` with a clear message; CLI exits 1 (never the no-report fallback) | `load_qc_data` |
 | Optional file path is `None` | Function returns empty string `""` or `None` dataframe; track omitted | `load_*` functions |
 | `windowTumorRatio ≤ 0.05` | Row skipped silently (noisy low-coverage region) | `coverage_log2_bedgraph` |
 | `tumorCopyNumber ≤ 0` | Row skipped silently (uncallable region) | `cn_bars_by_state`, `to_seg` |
@@ -242,7 +244,8 @@ all tests run locally with fixture TSV files.
 - [ ] HTML output contains `sample_id` string in title and header
 - [ ] HTML output contains no `<script src=` (igv.js inlined from v1.2.0; v1.0.0 checked for the CDN tag)
 - [ ] When `purple_tar` absent: no PURPLE tracks in HTML (bedgraph strings are empty)
-- [ ] When `qc_report` absent: header shows purity `?` and ploidy `?`
+- [ ] When `qc_report` absent: header shows purity `?` and ploidy `?`, and warns that ploidy 2.0 is assumed for segment rendering
+- [ ] Supplied `status` is labelled "Fit status", not presented as a QC result
 - [ ] When `cnvkit_*` absent: no CNVkit tracks in HTML
 - [ ] When `msi_report` absent: header shows MSI `?`
 - [ ] `code.sh` exits 1 when neither `purple_tar` nor `cnvkit_cnr` is set (tested via bats or bash -c)

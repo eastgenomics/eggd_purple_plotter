@@ -25,10 +25,10 @@
     {
       "name": "qc_report",
       "class": "file",
-      "label": "QC report TSV",
+      "label": "Purity/ploidy TSV (PURPLE purity.tsv or compatible)",
       "optional": true,
       "patterns": ["*.tsv"],
-      "help": "QC report TSV ({sample}.qc_report.tsv) containing purity, ploidy, and status columns. If absent, purity and ploidy are shown as '?' in the viewer header."
+      "help": "Tab-separated file whose first row gives numeric purity and ploidy, e.g. PURPLE's final-pass {sample}.purple.purity.tsv, or a compatible report such as {sample}.qc_report.tsv. Fractional ploidy is used as is. An optional status column is shown as the fit status (missing or blank -> UNKNOWN); it is not a QC pass/fail verdict. If no file is supplied, purity and ploidy are shown as '?' and the CN/ploidy segment tracks assume ploidy 2.0, with a warning in the viewer. A supplied file without numeric purity/ploidy fails the job."
     },
     {
       "name": "cnvkit_cnr",
@@ -49,10 +49,10 @@
     {
       "name": "cnvkit_genemetrics",
       "class": "file",
-      "label": "CNVkit genemetrics CSV",
+      "label": "CNVkit genemetrics (tab-separated)",
       "optional": true,
-      "patterns": ["*.genemetrics.csv", "*.csv"],
-      "help": "CNVkit per-gene metrics file ({sample}.genemetrics.csv)."
+      "patterns": ["*.genemetrics.tsv", "*.genemetrics.csv", "*.tsv", "*.csv"],
+      "help": "CNVkit per-gene metrics file: {sample}.genemetrics.tsv (CNVkit batch v2.1.0) or the older {sample}.genemetrics.csv. Both are read as tab-separated."
     },
     {
       "name": "msi_report",

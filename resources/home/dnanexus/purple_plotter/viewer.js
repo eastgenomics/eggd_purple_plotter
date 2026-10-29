@@ -221,7 +221,9 @@ function ppSvg() {
   const where = "Genome hg38 · Locus: " + locusText;
   const FONT = "Arial, sans-serif", maxPx = w - 24;
   const title = ppWrap(clean("#hdr .ttl"),  "bold 14px " + FONT, maxPx);
+  const warnEl = document.querySelector("#hdr .warn");          // ploidy assumption, if any
   const meta  = ppWrap(clean("#hdr .meta"), "12px " + FONT,      maxPx)
+                  .concat(warnEl ? ppWrap(clean("#hdr .warn"), "12px " + FONT, maxPx) : [])
                   .concat(ppWrap(where,     "12px " + FONT,      maxPx));
   const BANNER = 8 + title.length * 18 + meta.length * 16 + 4;
 

@@ -482,12 +482,12 @@ def render_html(inputs: "PlotInputs") -> str:
     ploidy = inputs.qc.ploidy
 
     # Sanitise sample_id for backtick JS literal context (used in seg/CNVkit SEG strings)
-    # Also escape </ to prevent </script> breaking out of the inline <script> block
+    # Also escape < (as \\x3c) so neither </script> nor <!--<script> can end or confuse the inline <script> block
     sample_js = (inputs.sample_id
                  .replace("\\", "\\\\")   # backslash first, or it would un-escape the rest
                  .replace("`", "\\`")
                  .replace("${" , "\\${")
-                 .replace("</", "<\\/"))
+                 .replace("<", "\\x3c"))   # no raw '<': blocks </script> and <!--<script> parser states
 
     # PURPLE tracks (empty strings if purple is None)
     if inputs.purple is not None:

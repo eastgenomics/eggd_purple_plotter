@@ -176,7 +176,8 @@ def _tracks_for(tmp_path, **kw):
     if node is None:
         pytest.skip("node not available")
     kw.setdefault("sample_id", "S001")
-    out = write_html(PlotInputs(**kw), tmp_path)
+    out = tmp_path / "page.html"        # fixed name: sample ids may contain '/' etc.
+    out.write_text(render_html(PlotInputs(**kw)))
     harness = tmp_path / "harness.js"
     harness.write_text(HARNESS)
     res = subprocess.run([node, str(harness), str(out)], capture_output=True, text=True, check=True)  # nosec B603
@@ -229,10 +230,18 @@ def test_full_inputs_keep_all_tracks(tmp_path):
     assert sum(len(t["children"]) for t in tracks) > 7   # merged tracks keep their several children
 
 
-def test_sample_id_backslash_cannot_break_out_of_js_template_literal(tmp_path):
-    """A backslash before ${ must not turn the interpolation back on (script injection)."""
-    sid = "A\\${globalThis.INJECTED=123}\\`B"
-    _tracks_for(tmp_path, sample_id=sid, purple=_purple(tmp_path))
+
+@pytest.mark.parametrize("sid", [
+    "A\\${globalThis.INJECTED=123}\\`B",
+    "A</script><script>globalThis.INJECTED=1</script>",
+    "A<!--<script>B",
+    "A\u2028B",
+])
+def test_sample_id_cannot_break_out_of_js_template_literal(tmp_path, sid):
+    """Backslash/`${`/script-parser tricks in sample_id must stay inert and round-trip into SEG data."""
+    cn = load_cnvkit_data(FIXTURES / "sample.cnr", FIXTURES / "sample.call.cns", None)
+    _tracks_for(tmp_path, sample_id=sid, purple=_purple(tmp_path), cnvkit=cn)
     out = _tracks_for.last
     assert out["injected"] is None
-    assert out["segSamples"] and all(s == sid for s in out["segSamples"])
+    assert len(out["segSamples"]) >= 2 and all(s.removesuffix("_cnvkit") == sid for s in out["segSamples"])
+    assert "<!--" not in (tmp_path / "page.html").read_text().split("<script>", 2)[-1]

@@ -86,6 +86,45 @@ python3 -m venv .venv
 open /tmp/26134S0005.igv.bars.html
 ```
 
+### Export an image of the whole-genome view
+
+The viewer header has **Save SVG** and **Save PNG** buttons. They export the
+current view (whatever locus is on screen) with a banner carrying the sample ID,
+purity, ploidy, status, MSI, genome build and the locus shown, so an image is never separated from its sample or region.
+
+For a file without opening a browser, render the whole-genome view headlessly:
+
+```bash
+.venv/bin/pip install playwright==1.64.1          # not needed by the app itself
+.venv/bin/python3 resources/home/dnanexus/purple_plotter/render_image.py \
+    --html /tmp/26134S0005.igv.bars.html \
+    --out_prefix /tmp/26134S0005.genome \
+    --chromium_path /usr/bin/chromium            # or set $CHROMIUM_PATH
+# -> /tmp/26134S0005.genome.svg, /tmp/26134S0005.genome.png
+```
+
+No network is used: igv.js and the hg38 chromosome/cytoband files are served from
+`resources/home/dnanexus/purple_plotter/assets/` (see its README). The image has
+no gene-annotation track.
+
+On DNAnexus, set `genome_image=true` to also get `{sample_id}.genome.png` and
+`.svg` outputs. Playwright and Chromium come from the `pp_headless_chromium` asset
+(source in `asset/`), listed under `runSpec.assetDepends` in `dxapp.json`. The asset
+is always downloaded to the worker, even when `genome_image` is false, because
+`assetDepends` cannot be conditional.
+
+To rebuild the asset (needs CONTRIBUTE on the target project and a `--bill-to`-able
+region; the 001_Reference project is UPLOAD-only for most users, so build in a dev
+project and `dx cp` the record):
+
+```bash
+dx mkdir -p <project>:/app_assets/pp_headless_chromium/pp_headless_chromium_v1.0.0
+dx build_asset asset -d <project>:/app_assets/pp_headless_chromium/pp_headless_chromium_v1.0.0/
+```
+
+Current record: `001_Reference:/app_assets/pp_headless_chromium/pp_headless_chromium_v1.0.0/pp_headless_chromium`
+(`record-JFV8Y9Q42qG5FFbkGjQq23Kj`). Build takes ~5 min; ~440 MB installed.
+
 ### Run on DNAnexus
 
 ```bash
@@ -149,6 +188,9 @@ pip download pandas \
 ```bash
 # Run all tests
 .venv/bin/pytest tests/ -v
+
+# Image-rendering tests run only if playwright and a Chromium are available
+# (CHROMIUM_PATH=/usr/bin/chromium); otherwise they are skipped.
 
 # Check no dxpy in the Python module
 grep "import dxpy\|from dxpy" resources/home/dnanexus/purple_plotter/purple_plotter.py

@@ -149,6 +149,7 @@ const ctx = {
   URL: { createObjectURL(b) { const u = "blob:" + (n++); texts[u] = b.t; return u; }, revokeObjectURL() {} },
   document: { getElementById: noop, createElement: noop, body: noop() },
   igv: { createBrowser(_el, c) { cfg = c; return Promise.resolve({}); } },
+  location: { search: "" }, URLSearchParams,
   console, setTimeout,
 };
 ctx.window = ctx;
@@ -221,3 +222,15 @@ def test_full_inputs_keep_all_tracks(tmp_path):
     _assert_no_empty_tracks(tracks)
     assert len(tracks) == 7
     assert sum(len(t["children"]) for t in tracks) > 7   # merged tracks keep their several children
+
+
+def test_render_html_has_export_buttons_and_hooks():
+    html = render_html(PlotInputs(sample_id="S001"))
+    assert 'id="btn-svg"' in html and 'id="btn-png"' in html
+    assert "window.ppExport" in html
+    assert "window.igvReady" in html
+
+
+def test_render_html_export_filename_is_sanitised():
+    html = render_html(PlotInputs(sample_id='a b/"c`${x}</script>'))
+    assert 'const ppSampleFile = "a_b_c_x_script_";' in html

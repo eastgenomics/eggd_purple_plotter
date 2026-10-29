@@ -4,6 +4,7 @@ import gzip
 import html as _html
 import io
 import math
+import re
 import tarfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -293,6 +294,10 @@ body {{ font-family: -apple-system, Arial, sans-serif; background: #f0f2f5; }}
         display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }}
 #hdr .ttl  {{ font-size: 15px; font-weight: 600; }}
 #hdr .meta {{ font-size: 12px; color: #9aafc4; }}
+#hdr .btns {{ margin-left: auto; display: flex; gap: 8px; }}
+#hdr button {{ font: inherit; font-size: 12px; color: #e8edf3; background: #2c3e57;
+               border: 1px solid #4a617f; border-radius: 3px; padding: 3px 10px; cursor: pointer; }}
+#hdr button:hover {{ background: #3a516f; }}
 #igv-div {{ background: white; }}
 #leg {{ background: #fff; border-top: 1px solid #dde; padding: 7px 18px;
         display: flex; flex-wrap: wrap; gap: 18px; align-items: center;
@@ -309,6 +314,10 @@ body {{ font-family: -apple-system, Arial, sans-serif; background: #f0f2f5; }}
   <span class="meta">
     Purity {purity} &nbsp;·&nbsp; Ploidy {ploidy} &nbsp;·&nbsp; {status}
     &nbsp;·&nbsp; MSI {msi_score} &nbsp;·&nbsp; {msi_status}
+  </span>
+  <span class="btns">
+    <button type="button" id="btn-svg" title="Download the current view as SVG">Save SVG</button>
+    <button type="button" id="btn-png" title="Download the current view as PNG">Save PNG</button>
   </span>
 </div>
 <div id="igv-div"></div>
@@ -379,7 +388,7 @@ function pruneTracks(list) {{
 
 igv.createBrowser(document.getElementById("igv-div"), {{
   genome:    "hg38",
-  locus:     "{locus}",
+  locus:     new URLSearchParams(location.search).get("locus") || "{locus}",
   showRuler: true,
   showCursorTrackingGuide: true,
   tracks: pruneTracks([
@@ -468,6 +477,159 @@ igv.createBrowser(document.getElementById("igv-div"), {{
     }},
 
   ]),
+}}).then(function (b) {{
+  window.igvBrowser = b;
+  window.igvReady   = true;
+}}).catch(function (e) {{
+  window.igvError = String(e);
+  console.error(e);
+}});
+
+// ── Image export (current view) ─────────────────────────────────────────────
+// ppExport is also called by the headless renderer (render_image.py), so the
+// downloaded files and the pipeline output come from the same code path.
+const ppSampleFile = "{sample_file}";
+
+// Exported images carry the sample ID, purity/ploidy/status and MSI banner from
+// the page header, so an image is never separated from the sample it shows.
+// Break txt into lines whose rendered width (measured with the same font the SVG
+// text uses) fits in `maxPx`, at spaces where possible, hard-splitting any single
+// token that is wider than a line, so long sample IDs are never clipped.
+function ppWrap(txt, font, maxPx) {{
+  const ctx = document.createElement("canvas").getContext("2d");
+  ctx.font = font;
+  const fits = function (t) {{ return ctx.measureText(t).width * 1.05 <= maxPx; }};   // 5% safety for font fallback
+  const lines = []; let cur = "";
+  txt.split(" ").forEach(function (word) {{
+    let chars = Array.from(word);        // code points, so a surrogate pair is never split
+    while (!fits(chars.join("")) && chars.length > 1) {{
+      if (cur) {{ lines.push(cur); cur = ""; }}
+      let n = chars.length - 1;
+      while (n > 1 && !fits(chars.slice(0, n).join(""))) n--;
+      lines.push(chars.slice(0, n).join("")); chars = chars.slice(n);
+    }}
+    word = chars.join("");
+    if (cur && !fits(cur + " " + word)) {{ lines.push(cur); cur = word; }}
+    else cur = cur ? cur + " " + word : word;
+  }});
+  if (cur) lines.push(cur);
+  return lines.length ? lines : [""];
+}}
+
+function ppSvg() {{
+  if (!window.igvBrowser) throw new Error("IGV browser is not ready");
+  const NS = "http://www.w3.org/2000/svg";
+  const doc  = new DOMParser().parseFromString(window.igvBrowser.toSVG(), "image/svg+xml");
+  const root = doc.documentElement;
+  const [w, h] = ppSvgSize(root);
+  const clean = function (sel) {{ return document.querySelector(sel).textContent.replace(/\\s+/g, " ").trim(); }};
+  // The IGV SVG has ruler coordinates but not its navigation bar, so state the genome and
+  // locus explicitly: an image must identify what it shows once detached from its filename.
+  const loci = window.igvBrowser.currentLoci && window.igvBrowser.currentLoci();
+  // igv reports the whole genome as "all:1-<genome length>"; label it only when the range really is
+  // the whole genome, so a partial "all:<a>-<b>" view keeps its coordinates.
+  const glen = window.igvBrowser.genome && window.igvBrowser.genome.getGenomeLength && window.igvBrowser.genome.getGenomeLength();
+  const locusText = [].concat(loci || "all").map(function (l) {{
+    const m = /^all(?::(\\d+)-(\\d+))?$/.exec(l);
+    return m && (!m[1] || (Number(m[1]) <= 1 && glen && Math.abs(Number(m[2]) - glen) <= 1)) ? "all (whole genome)" : l;
+  }}).join(" | ");
+  const where = "Genome hg38 \u00b7 Locus: " + locusText;
+  const FONT = "Arial, sans-serif", maxPx = w - 24;
+  const title = ppWrap(clean("#hdr .ttl"),  "bold 14px " + FONT, maxPx);
+  const meta  = ppWrap(clean("#hdr .meta"), "12px " + FONT,      maxPx)
+                  .concat(ppWrap(where,     "12px " + FONT,      maxPx));
+  const BANNER = 8 + title.length * 18 + meta.length * 16 + 4;
+
+  const body = doc.createElementNS(NS, "g");
+  body.setAttribute("transform", "translate(0," + BANNER + ")");
+  while (root.firstChild) body.appendChild(root.firstChild);
+  const bg = doc.createElementNS(NS, "rect");
+  [["x", 0], ["y", 0], ["width", w], ["height", BANNER], ["fill", "#1a2638"]]
+    .forEach(function (kv) {{ bg.setAttribute(kv[0], kv[1]); }});
+  root.appendChild(bg);
+  let y = 8;
+  function add(lines, size, step, fill, weight) {{
+    lines.forEach(function (txt) {{
+      y += step;
+      const t = doc.createElementNS(NS, "text");
+      [["x", 12], ["y", y - 4], ["font-family", FONT], ["font-size", size],
+       ["font-weight", weight], ["fill", fill]].forEach(function (kv) {{ t.setAttribute(kv[0], kv[1]); }});
+      t.textContent = txt;
+      root.appendChild(t);
+    }});
+  }}
+  add(title, 14, 18, "#e8edf3", "bold");
+  add(meta,  12, 16, "#9aafc4", "normal");
+  root.appendChild(body);
+  root.setAttribute("height", h + BANNER);
+  root.setAttribute("viewBox", "0 0 " + w + " " + (h + BANNER));
+  return new XMLSerializer().serializeToString(root);
+}}
+
+function ppSvgSize(root) {{
+  const vb = (root.getAttribute("viewBox") || "").split(/[\\s,]+/).map(Number);
+  const w = parseFloat(root.getAttribute("width"))  || vb[2];
+  const h = parseFloat(root.getAttribute("height")) || vb[3];
+  if (!(w > 0 && h > 0)) throw new Error("SVG has no usable size");
+  return [w, h];
+}}
+
+function ppPng(scale) {{
+  scale = scale || 2;
+  const svgText = ppSvg();
+  const [w, h] = ppSvgSize(new DOMParser().parseFromString(svgText, "image/svg+xml").documentElement);
+  const url = URL.createObjectURL(new Blob([svgText], {{ type: "image/svg+xml;charset=utf-8" }}));
+  return new Promise(function (resolve, reject) {{
+    const img = new Image();
+    img.onload = function () {{
+      const c = document.createElement("canvas");
+      c.width = Math.round(w * scale); c.height = Math.round(h * scale);
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      c.toBlob(function (blob) {{ blob ? resolve(blob) : reject(new Error("PNG encode failed")); }}, "image/png");
+    }};
+    img.onerror = function () {{ URL.revokeObjectURL(url); reject(new Error("SVG could not be rasterised")); }};
+    img.src = url;
+  }});
+}}
+
+function ppDownload(blob, name) {{
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function () {{ URL.revokeObjectURL(a.href); }}, 1000);
+}}
+
+function ppLocusTag() {{
+  const l = window.igvBrowser && window.igvBrowser.currentLoci && window.igvBrowser.currentLoci();
+  const t = String(Array.isArray(l) ? l[0] : (l || "view")).replace(/[^A-Za-z0-9._-]+/g, "_");
+  return t || "view";
+}}
+
+window.ppExport = {{
+  svg: ppSvg,
+  png: function (scale) {{
+    return ppPng(scale).then(function (blob) {{
+      return new Promise(function (resolve, reject) {{
+        const r = new FileReader();
+        r.onload  = function () {{ resolve(String(r.result).split(",")[1]); }};
+        r.onerror = function () {{ reject(r.error); }};
+        r.readAsDataURL(blob);
+      }});
+    }});
+  }},
+}};
+
+document.getElementById("btn-svg").addEventListener("click", function () {{
+  try {{
+    ppDownload(new Blob([ppSvg()], {{ type: "image/svg+xml" }}), ppSampleFile + "." + ppLocusTag() + ".svg");
+  }} catch (e) {{ alert("Could not export SVG: " + e.message); }}
+}});
+document.getElementById("btn-png").addEventListener("click", function () {{
+  ppPng(2).then(function (blob) {{ ppDownload(blob, ppSampleFile + "." + ppLocusTag() + ".png"); }})
+          .catch(function (e) {{ alert("Could not export PNG: " + e.message); }});
 }});
 </script>
 </body>
@@ -518,8 +680,11 @@ def render_html(inputs: "PlotInputs") -> str:
                      .replace('"', '\\"')
                      .replace("</", "<\\/"))  # prevent </script> injection
 
+    sample_file = re.sub(r"[^A-Za-z0-9._-]+", "_", inputs.sample_id) or "sample"
+
     return HTML_BARS.format(
         sample               = sample_html,
+        sample_file          = sample_file,
         purity               = purity_str,
         ploidy               = ploidy_str,
         status               = _html.escape(inputs.qc.status),

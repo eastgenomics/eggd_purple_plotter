@@ -14,7 +14,10 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
         with: { python-version: "3.12" }
-      - run: pip install pandas pytest
+      # playwright drives the runner's preinstalled Chrome (no browser download) for the image-export tests
+      - run: pip install pandas pytest playwright==1.64.1
+      - name: Require a browser (otherwise the image-export tests would silently skip)
+        run: command -v google-chrome || command -v chromium || command -v chromium-browser
       - run: pytest tests/ -v
 
   security:

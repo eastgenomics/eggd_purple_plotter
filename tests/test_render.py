@@ -156,8 +156,12 @@ ctx.window = ctx;
 require("vm").runInNewContext(scripts.join("\n"), ctx);
 const flat = (t) => (t.tracks || [t]).map(c => ({ empty: !texts[c.url].trim() }));
 const nonempty = Object.values(texts).filter(t => t.trim()).length;
+const segSamples = Object.values(texts).filter(t => t.startsWith("SampleID\t"))
+  .map(t => t.split("\n")[1].split("\t")[0]);
 process.stdout.write(JSON.stringify({
   nonempty,
+  injected: ctx.INJECTED === undefined ? null : String(ctx.INJECTED),
+  segSamples,
   tracks: cfg.tracks.map(t => ({ name: t.name, children: flat(t) })),
 }));
 """
@@ -172,11 +176,14 @@ def _tracks_for(tmp_path, **kw):
     node = shutil.which("node")
     if node is None:
         pytest.skip("node not available")
-    out = write_html(PlotInputs(sample_id="S001", **kw), tmp_path)
+    kw.setdefault("sample_id", "S001")
+    out = tmp_path / "page.html"        # fixed name: sample ids may contain '/' etc.
+    out.write_text(render_html(PlotInputs(**kw)))
     harness = tmp_path / "harness.js"
     harness.write_text(HARNESS)
     res = subprocess.run([node, str(harness), str(out)], capture_output=True, text=True, check=True)  # nosec B603
     parsed = json.loads(res.stdout)
+    _tracks_for.last = parsed
     kept = sum(len(t["children"]) for t in parsed["tracks"])
     assert kept == parsed["nonempty"], f"{kept} tracks kept but {parsed['nonempty']} blobs have data"
     return parsed["tracks"]
@@ -234,3 +241,19 @@ def test_render_html_has_export_buttons_and_hooks():
 def test_render_html_export_filename_is_sanitised():
     html = render_html(PlotInputs(sample_id='a b/"c`${x}</script>'))
     assert 'const ppSampleFile = "a_b_c_x_script_";' in html
+
+
+@pytest.mark.parametrize("sid", [
+    "A\\${globalThis.INJECTED=123}\\`B",
+    "A</script><script>globalThis.INJECTED=1</script>",
+    "A<!--<script>B",
+    "A\u2028B",
+])
+def test_sample_id_cannot_break_out_of_js_template_literal(tmp_path, sid):
+    """Backslash/`${`/script-parser tricks in sample_id must stay inert and round-trip into SEG data."""
+    cn = load_cnvkit_data(FIXTURES / "sample.cnr", FIXTURES / "sample.call.cns", None)
+    _tracks_for(tmp_path, sample_id=sid, purple=_purple(tmp_path), cnvkit=cn)
+    out = _tracks_for.last
+    assert out["injected"] is None
+    assert len(out["segSamples"]) >= 2 and all(s.removesuffix("_cnvkit") == sid for s in out["segSamples"])
+    assert "<!--" not in (tmp_path / "page.html").read_text().split("<script>", 2)[-1]

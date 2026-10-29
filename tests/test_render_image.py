@@ -198,3 +198,14 @@ def test_csp_violation_is_reported(viewer, tmp_path):
     with pytest.raises(render_image.RenderError) as ei:
         render_image.render_genome_image(tampered, tmp_path / "t", chromium_path=exe, timeout_s=30)
     assert "Content-Security-Policy violations" in str(ei.value) and "script-src" in str(ei.value)
+
+
+def test_csp_violation_during_export_is_reported(viewer, tmp_path):
+    """If the CSP blocks the PNG export (here: blob: images removed from img-src), the error names it."""
+    exe, html, out = viewer
+    tampered = tmp_path / "e.html"
+    tampered.write_text(html.read_text(encoding="utf-8").replace("img-src data: blob:", "img-src data:", 1),
+                        encoding="utf-8")
+    with pytest.raises(render_image.RenderError) as ei:
+        render_image.render_genome_image(tampered, tmp_path / "e", chromium_path=exe, timeout_s=30)
+    assert "Content-Security-Policy violations" in str(ei.value) and "img-src" in str(ei.value)

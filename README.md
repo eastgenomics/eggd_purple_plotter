@@ -168,7 +168,8 @@ Every generated viewer has the same structure:
 4. The viewer code, inlined from `resources/home/dnanexus/purple_plotter/viewer.js`.
 
 Items 3 and 4 are **byte-identical for every sample**; the per-sample HTML-context values
-(`<title>`, header) are HTML-escaped. The CSP lets only those two scripts run, by hash:
+(`<title>`, header) are HTML-escaped. Tabs, CR and LF in the sample ID are replaced with `_`
+in the SEG track data, where the ID is a tab-delimited column. The CSP lets only those two scripts run, by hash:
 
 ```
 default-src 'none';

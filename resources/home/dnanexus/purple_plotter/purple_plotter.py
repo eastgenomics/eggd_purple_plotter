@@ -455,6 +455,9 @@ def render_html(inputs: "PlotInputs") -> str:
     """Fill HTML_BARS from PlotInputs. Empty track strings produce no track (see viewer.js)."""
     ploidy = inputs.qc.ploidy
     sample = inputs.sample_id      # raw: it only ever reaches the JSON block (encoded) or HTML (escaped)
+    # SEG is tab/newline-delimited, and the sample name is a SEG column: a tab, CR or LF in the
+    # ID would add or corrupt rows. JSON encoding cannot prevent that, so replace them here.
+    seg_sample = re.sub(r"[\t\r\n]", "_", sample)
 
     # PURPLE tracks (empty strings if purple is None)
     if inputs.purple is not None:
@@ -463,7 +466,7 @@ def render_html(inputs: "PlotInputs") -> str:
         baf_bg      = baf_bedgraph(inputs.purple.baf_df)
         baf_mir_bg  = baf_bedgraph_mirror(inputs.purple.baf_df)
         baf_bar_bgs = baf_seg_bars_by_state(inputs.purple.seg_df, ploidy)
-        seg_data    = to_seg(inputs.purple.seg_df, sample, ploidy)
+        seg_data    = to_seg(inputs.purple.seg_df, seg_sample, ploidy)
     else:
         cov_log2_bg = ""
         bar_bgs     = {k: "" for k, *_ in CN_STATES}
@@ -472,7 +475,7 @@ def render_html(inputs: "PlotInputs") -> str:
 
     # CNVkit tracks (empty strings if dataframe is None)
     cnvkit_cnr_bg = cnr_to_bedgraph(inputs.cnvkit.cnr_df) if inputs.cnvkit.cnr_df is not None else ""
-    cnvkit_sns_bg = cns_to_seg(inputs.cnvkit.cns_df, sample, ploidy) if inputs.cnvkit.cns_df is not None else ""
+    cnvkit_sns_bg = cns_to_seg(inputs.cnvkit.cns_df, seg_sample, ploidy) if inputs.cnvkit.cns_df is not None else ""
     cnvkit_gm_bg  = genemetrics_to_bedgraph(inputs.cnvkit.gm_df) if inputs.cnvkit.gm_df is not None else ""
 
     # Header values — show "?" when no QC file was loaded

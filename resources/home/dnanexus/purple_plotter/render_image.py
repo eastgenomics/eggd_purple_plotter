@@ -137,7 +137,8 @@ def render_genome_image(
             svg = page.evaluate("window.ppExport.svg()")
             png_b64 = page.evaluate("s => window.ppExport.png(s)", scale)
         except PlaywrightError as e:
-            raise RenderError(f"Rendering failed: {e}") from e
+            page.wait_for_timeout(100)   # let a pending securitypolicyviolation event arrive
+            raise RenderError(f"Rendering failed: {e}" + (f" [{diagnostics()}]" if diagnostics() else "")) from e
         finally:
             browser.close()
 

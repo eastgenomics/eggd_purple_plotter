@@ -115,3 +115,21 @@ def test_cli_still_requires_sample(tmp_path):
     r = subprocess.run([sys.executable, str(SCRIPT), "--cnvkit_cnr", str(FIXTURES / "sample.cnr")],
                        capture_output=True, text=True)  # nosec B603
     assert r.returncode != 0 and "--sample" in r.stderr
+
+
+@pytest.mark.parametrize("sid", ["A\tB", "A\nchr1\t1\t2\t.\t9.9", "A\r\nB"])
+def test_seg_delimiters_in_sample_id_cannot_add_rows(tmp_path, sid):
+    html = render_html(PlotInputs(
+        sample_id=sid, purple=_purple(tmp_path),
+        cnvkit=load_cnvkit_data(FIXTURES / "sample.cnr", FIXTURES / "sample.call.cns", None)))
+    data = json.loads(re.search(r'<script type="application/json" id="pp-data">(.*?)</script>', html, re.S).group(1))
+    clean = re.sub(r"[\t\r\n]", "_", sid)
+    for key in ("seg_data", "cnvkit_sns_bg"):
+        rows = data[key].split("\n")[1:]
+        assert rows and all(len(r.split("\t")) == 6 for r in rows), key
+        assert {r.split("\t")[0].removesuffix("_cnvkit") for r in rows} == {clean}, key
+    clean_render = render_html(PlotInputs(
+        sample_id=clean, purple=_purple(tmp_path),
+        cnvkit=load_cnvkit_data(FIXTURES / "sample.cnr", FIXTURES / "sample.call.cns", None)))
+    assert len(data["seg_data"].split("\n")) == len(json.loads(re.search(
+        r'id="pp-data">(.*?)</script>', clean_render, re.S).group(1))["seg_data"].split("\n"))

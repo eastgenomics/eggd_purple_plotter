@@ -120,3 +120,65 @@ def test_csp_live(full_html):
     assert errors == []
     assert any(u.startswith("https://hgdownload.soe.ucsc.edu/") and u.endswith("hg38.2bit") for u in requests)
     assert any("ncbiRefSeq" in u for u in requests)                    # RefSeq track loaded
+
+
+HOSTILE = 'S<marquee id="pp-injected">FAKE</marquee>"><img id="pp-img" src="data:,">'
+
+
+@pytest.mark.parametrize("track_name", [" ", "CNVkit segments"])     # PURPLE seg strips, CNVkit segments
+def test_segment_popup_shows_sample_id_as_text(tmp_path, track_name):
+    """Clicking a segment shows the sample ID as text: igv.js would otherwise insert it as markup."""
+    pytest.importorskip("playwright.sync_api")
+    exe = _chromium()
+    if exe is None:
+        pytest.skip("no Chromium available (set CHROMIUM_PATH)")
+    import tarfile
+    from playwright.sync_api import sync_playwright
+    tar = tmp_path / "H.purple.tar.gz"
+    with tarfile.open(tar, "w:gz") as tf:
+        for f in ("sample.amber.baf.tsv", "sample.purple.segment.tsv", "sample.target_region_cn.tsv"):
+            tf.add(FIXTURES / f, arcname=f)
+    html = tmp_path / "page.html"
+    from purple_plotter import render_html
+    html.write_text(render_html(PlotInputs(
+        sample_id=HOSTILE, locus="chr2:20000-80000", purple=load_purple_data(tar),
+        cnvkit=load_cnvkit_data(FIXTURES / "sample.cnr", FIXTURES / "sample.call.cns", None))), encoding="utf-8")
+
+    def handle(route):
+        entry = render_image.ROUTES.get(route.request.url)
+        if entry is None:
+            route.abort()
+            return
+        route.fulfill(body=(render_image.ASSETS / entry[0]).read_bytes(),
+                      content_type=entry[1], headers={"Access-Control-Allow-Origin": "*"})
+
+    with sync_playwright() as p:
+        b = p.chromium.launch(executable_path=exe, args=["--no-sandbox"])
+        try:
+            page = b.new_page(viewport={"width": 1600, "height": 1000})
+            page.route(lambda u: u.startswith("http"), handle)
+            page.goto(html.resolve().as_uri())
+            page.wait_for_function("() => window.igvReady === true || !!window.igvError", timeout=60000)
+            page.wait_for_timeout(800)
+            box = page.evaluate("""name => {
+                const tv = window.igvBrowser.trackViews.find(v => v.track.type === "seg" && v.track.name === name);
+                const r = tv.viewports[0].viewportElement.getBoundingClientRect();
+                return [r.x + r.width / 2, r.y + Math.min(r.height / 2, 5)];
+            }""", track_name)
+            page.mouse.click(*box)
+            page.wait_for_timeout(1200)          # igv.js delays single-click handling
+            # igv.js renders into a shadow root, so search it as well as the document.
+            found = page.evaluate("""() => {
+                const pops = [], injected = [];
+                const walk = (root) => {
+                    pops.push(...[...root.querySelectorAll(".igv-ui-popover")].map(e => e.textContent));
+                    injected.push(...root.querySelectorAll("#pp-injected, #pp-img, marquee"));
+                    for (const el of root.querySelectorAll("*")) if (el.shadowRoot) walk(el.shadowRoot);
+                };
+                walk(document);
+                return { pops, injected: injected.length };
+            }""")
+            assert any(HOSTILE in t for t in found["pops"]), ("popup with the literal sample ID not shown", found)
+            assert found["injected"] == 0
+        finally:
+            b.close()

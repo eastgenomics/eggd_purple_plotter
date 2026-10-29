@@ -26,6 +26,26 @@ const cnvkitSnsBg        = ppData.cnvkit_sns_bg;
 const cnvkitGenemetricsBg = ppData.cnvkit_gm_bg;
 const segData            = ppData.seg_data;
 
+// Click popups. igv.js builds them as HTML from raw values, so a sample ID such as
+// "S<b>x</b>" would become markup (the CSP stops scripts, not markup). Every value is
+// HTML-escaped here, in the same layout igv.js uses, and returned as the popup content.
+function ppEsc(v) {
+  return String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                  .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function ppPopup(track, data) {
+  if (!Array.isArray(data) || data.length === 0) return false;     // false: no popup
+  return data.map(function (d) {
+    if (d === "<hr>" || d === "<hr/>") return "<hr>";
+    if (d && typeof d === "object" && d.name !== undefined) {
+      return '<div title="' + ppEsc(d.value) + '"><span>' + ppEsc(d.name) + "</span>&nbsp;&nbsp;&nbsp;" + ppEsc(d.value) + "</div>";
+    }
+    const text = d && typeof d === "object" ? (d.html !== undefined ? d.html : JSON.stringify(d)) : d;
+    return "<div>" + ppEsc(text) + "</div>";
+  }).join("");
+}
+
 // Blob URLs whose data is empty (input not supplied). igv.js throws while
 // parsing an empty SEG file and aborts createBrowser, leaving a blank viewer,
 // so tracks backed by empty data are removed before the browser is created.
@@ -138,6 +158,7 @@ igv.createBrowser(document.getElementById("igv-div"), {
 
   ]),
 }).then(function (b) {
+  b.on("trackclick", ppPopup);
   window.igvBrowser = b;
   window.igvReady   = true;
 }).catch(function (e) {

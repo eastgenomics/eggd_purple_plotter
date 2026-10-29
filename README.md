@@ -167,7 +167,9 @@ Every generated viewer has the same structure:
    above it; the DOMPurify notice is inside the script.
 4. The viewer code, inlined from `resources/home/dnanexus/purple_plotter/viewer.js`.
 
-Items 3 and 4 are **byte-identical for every sample**; the per-sample HTML-context values
+Items 3 and 4 are **byte-identical for every sample**. igv.js builds click popups as HTML from
+raw values, so `viewer.js` supplies its own popup content with every value HTML-escaped (the
+CSP stops scripts, not injected markup); the per-sample HTML-context values
 (`<title>`, header) are HTML-escaped. Tabs, CR and LF in the sample ID are replaced with `_`
 in the SEG track data, where the ID is a tab-delimited column. The CSP lets only those two scripts run, by hash:
 
@@ -217,7 +219,7 @@ prints the two `sha256-…` values. For v1.2.0:
 | Script | Hash |
 |---|---|
 | igv.js 3.8.3 | `sha256-rPTumc3JG+iEIDkw25w5W8hiZ1UpM7SD2gtgnBbqBao=` |
-| viewer.js | `sha256-9YOjjddWbL3S2VjUfg13ZtSBtwq9qGUw1aDrzhaGMi8=` |
+| viewer.js | `sha256-7Sg2z/jgCX31CI12ICC1nuw6nx1TUFlAeqt0sXN2kgU=` |
 
 Any change to `viewer.js` or `igv.min.js` changes these; record the new values with each release.
 

@@ -27,10 +27,10 @@ def test_render_html_is_valid_html():
     assert "</html>" in html
 
 
-def test_render_html_cdn_tag():
-    inputs = PlotInputs(sample_id="S001")
-    html = render_html(inputs)
-    assert "igv.org/web/release/3.8.3" in html
+def test_no_remote_script():
+    html = render_html(PlotInputs(sample_id="S001"))
+    assert "<script src=" not in html
+    assert "igv.org/web/release" not in html
 
 
 def test_render_html_qc_defaults_shown():
@@ -139,7 +139,10 @@ def test_cli_all_inputs(tmp_path):
 HARNESS = r"""
 const fs = require("fs");
 const html = fs.readFileSync(process.argv[2], "utf8");
+// Run only the viewer code (the last plain <script>); igv.js itself is stubbed below.
 const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+const viewer = scripts[scripts.length - 1];
+const dataJson = html.match(/<script type="application\/json" id="pp-data">([\s\S]*?)<\/script>/)[1];
 const texts = {};
 let n = 0, cfg = null;
 class StubBlob { constructor(parts) { this.t = parts.join(""); } }
@@ -147,13 +150,16 @@ const noop = () => ({ addEventListener() {}, appendChild() {}, remove() {}, clic
 const ctx = {
   Blob: StubBlob,
   URL: { createObjectURL(b) { const u = "blob:" + (n++); texts[u] = b.t; return u; }, revokeObjectURL() {} },
-  document: { getElementById: noop, createElement: noop, body: noop() },
+  document: {
+    getElementById: (id) => id === "pp-data" ? { textContent: dataJson } : noop(),
+    createElement: noop, body: noop(),
+  },
   igv: { createBrowser(_el, c) { cfg = c; return Promise.resolve({}); } },
   location: { search: "" }, URLSearchParams,
   console, setTimeout,
 };
 ctx.window = ctx;
-require("vm").runInNewContext(scripts.join("\n"), ctx);
+require("vm").runInNewContext(viewer, ctx);
 const flat = (t) => (t.tracks || [t]).map(c => ({ empty: !texts[c.url].trim() }));
 const nonempty = Object.values(texts).filter(t => t.trim()).length;
 const segSamples = Object.values(texts).filter(t => t.startsWith("SampleID\t"))
@@ -240,20 +246,56 @@ def test_render_html_has_export_buttons_and_hooks():
 
 def test_render_html_export_filename_is_sanitised():
     html = render_html(PlotInputs(sample_id='a b/"c`${x}</script>'))
-    assert 'const ppSampleFile = "a_b_c_x_script_";' in html
+    assert '"sample_file":"a_b_c_x_script_"' in html
 
 
-@pytest.mark.parametrize("sid", [
+HOSTILE_IDS = [
+    "A`B",
+    "A${alert(1)}B",
     "A\\${globalThis.INJECTED=123}\\`B",
+    "A\\B",
     "A</script><script>globalThis.INJECTED=1</script>",
     "A<!--<script>B",
-    "A\u2028B",
-])
-def test_sample_id_cannot_break_out_of_js_template_literal(tmp_path, sid):
-    """Backslash/`${`/script-parser tricks in sample_id must stay inert and round-trip into SEG data."""
+    "A\u2028B\u2029C",
+    'A"B\'C',
+    "A&amp;B",
+]
+
+
+@pytest.mark.parametrize("sid", HOSTILE_IDS)
+def test_hostile_sample_ids(tmp_path, sid):
+    """Hostile sample IDs stay data: the page structure is unchanged, the JSON block decodes to the
+    exact ID, the header shows it HTML-escaped, the executable scripts are identical to a plain ID's,
+    nothing runs, and the ID round-trips into the PURPLE and CNVkit SEG data."""
+    import html as _h
+    from html.parser import HTMLParser
     cn = load_cnvkit_data(FIXTURES / "sample.cnr", FIXTURES / "sample.call.cns", None)
     _tracks_for(tmp_path, sample_id=sid, purple=_purple(tmp_path), cnvkit=cn)
     out = _tracks_for.last
     assert out["injected"] is None
     assert len(out["segSamples"]) >= 2 and all(s.removesuffix("_cnvkit") == sid for s in out["segSamples"])
-    assert "<!--" not in (tmp_path / "page.html").read_text().split("<script>", 2)[-1]
+
+    page = (tmp_path / "page.html").read_text(encoding="utf-8")
+
+    class Scripts(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=False)
+            self.blocks, self._cur = [], None
+        def handle_starttag(self, tag, attrs):
+            if tag == "script":
+                self._cur = [dict(attrs).get("type"), ""]
+        def handle_endtag(self, tag):
+            if tag == "script" and self._cur is not None:
+                self.blocks.append(tuple(self._cur)); self._cur = None
+        def handle_data(self, d):
+            if self._cur is not None: self._cur[1] += d
+
+    p = Scripts(); p.feed(page)
+    assert [t for t, _ in p.blocks] == ["application/json", None, None]   # exactly the 3 expected scripts
+    data = json.loads(p.blocks[0][1])
+    assert data["seg_data"].split("\n")[1].split("\t")[0] == sid
+    assert "<title>IGV bars — " + _h.escape(sid) + "</title>" in page
+
+    plain = render_html(PlotInputs(sample_id="S001"))
+    q = Scripts(); q.feed(plain)
+    assert [b for t, b in p.blocks if t is None] == [b for t, b in q.blocks if t is None]

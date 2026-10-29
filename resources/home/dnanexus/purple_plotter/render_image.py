@@ -6,9 +6,11 @@ switches to the whole-genome view (locus ``all``) and calls the viewer's own
 ``window.ppExport`` functions, so the files are identical to what the
 "Save SVG" / "Save PNG" buttons produce.
 
-No network access is needed or used. The CDN ``igv.min.js`` and the hg38
-genome-definition files the viewer requests are served from ``assets/``;
-every other request is aborted and reported.
+No network access is needed or used. igv.js is embedded in the HTML itself; the
+hg38 genome-definition files the viewer requests are served from ``assets/``;
+every other request is aborted and reported. The requested URLs are on hosts the
+viewer's Content-Security-Policy allows (igv.org, hgdownload.soe.ucsc.edu), because
+the CSP is checked before Playwright's routing sees a request.
 
 Playwright is imported lazily so that purple_plotter.py and its tests do not
 depend on it. The browser is taken from --chromium_path, then $CHROMIUM_PATH,
@@ -24,12 +26,15 @@ from urllib.parse import quote
 ASSETS = Path(__file__).resolve().parent / "assets"
 
 # URLs the generated HTML requests -> bundled file (see assets/README.md).
-CDN_IGV = "https://igv.org/web/release/3.8.3/dist/igv.min.js"
+# igv.min.js is no longer requested (it is inlined); a request for it would be a bug and is
+# reported like any other unbundled URL.
 GENOME_BASE = "https://igv.org/genomes/data/hg38/"
+# Not an igv.org URL on purpose: igv.js replaces any igv.org hg38 fastaURL with UCSC's
+# hg38.2bit, which is not bundled.
+CHROM_SIZES = "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.chrom.sizes"
 ROUTES = {
-    CDN_IGV:                                  ("igv.min.js",         "application/javascript"),
     "https://igv.org/genomes/genomes3.json":  ("genomes.json",       "application/json"),
-    "https://assets.invalid/hg38.chrom.sizes": ("hg38.chrom.sizes",  "text/plain"),
+    CHROM_SIZES:                              ("hg38.chrom.sizes",   "text/plain"),
     GENOME_BASE + "cytoBandIdeo.txt.gz":      ("cytoBandIdeo.txt.gz", "application/gzip"),
     GENOME_BASE + "hg38_alias.tab":           ("hg38_alias.tab",     "text/plain"),
 }

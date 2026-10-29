@@ -142,6 +142,9 @@ def test_banner_states_genome_and_locus(tmp_path_factory):
     assert "Genome hg38" in svg.read_text() and "Locus: all (whole genome)" in svg.read_text()
     svg2, _ = render_image.render_genome_image(html, out / "r", chromium_path=exe, locus="chr7:116,672,196-117,120,285")
     assert "Locus: chr7:116672196-117120285" in svg2.read_text()
+    svg3, _ = render_image.render_genome_image(html, out / "p", chromium_path=exe, locus="all:1000000000-2000000000")
+    where = svg3.read_text().split("Locus: ")[1][:40]
+    assert "whole genome" not in where and where.startswith("all:")      # partial 'all' view keeps its range
 
 
 def test_cnvkit_only_viewer_initialises_and_png_button_downloads(viewer):

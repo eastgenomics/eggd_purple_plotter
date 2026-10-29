@@ -526,8 +526,12 @@ function ppSvg() {{
   // The IGV SVG has ruler coordinates but not its navigation bar, so state the genome and
   // locus explicitly: an image must identify what it shows once detached from its filename.
   const loci = window.igvBrowser.currentLoci && window.igvBrowser.currentLoci();
+  // igv reports the whole genome as "all:1-<genome length>"; label it only when the range really is
+  // the whole genome, so a partial "all:<a>-<b>" view keeps its coordinates.
+  const glen = window.igvBrowser.genome && window.igvBrowser.genome.getGenomeLength && window.igvBrowser.genome.getGenomeLength();
   const locusText = [].concat(loci || "all").map(function (l) {{
-    return /^all\\b/.test(l) ? "all (whole genome)" : l;    // igv reports the whole genome as "all:1-<genome length>"
+    const m = /^all(?::(\\d+)-(\\d+))?$/.exec(l);
+    return m && (!m[1] || (Number(m[1]) <= 1 && glen && Math.abs(Number(m[2]) - glen) <= 1)) ? "all (whole genome)" : l;
   }}).join(" | ");
   const where = "Genome hg38 \u00b7 Locus: " + locusText;
   const FONT = "Arial, sans-serif", maxPx = w - 24;

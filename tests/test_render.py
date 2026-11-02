@@ -268,13 +268,16 @@ def test_sample_named_like_the_seg_header_is_not_no_data(tmp_path):
     assert [t["name"] for t in tracks].count(" ") == 2                 # both PURPLE segment strips
 
 
-def test_no_data_segment_track_is_tall_enough_for_its_label(tmp_path):
+def test_no_data_segment_tracks_are_tall_enough_for_their_label(tmp_path):
+    """PURPLE segment strips are 10 px; when PURPLE was supplied but has no usable segments
+    (all copy numbers <= 0) they are labelled "(no data)" and raised to fit the label."""
     import pandas as pd
-    from purple_plotter import CNVkitData
-    cns = pd.DataFrame({"chromosome": ["chrUn"], "start": [1], "end": [2], "log2": [0.1], "cn": [2], "probes": [1]})
-    cn = load_cnvkit_data(FIXTURES / "sample.cnr", None, None)
-    tracks = {t["name"]: t for t in _tracks_for(tmp_path, cnvkit=CNVkitData(cnr_df=cn.cnr_df, cns_df=cns))}
-    assert tracks["CNVkit segments (no data)"]["height"] >= 25
+    from purple_plotter import PurpleData
+    purple = _purple(tmp_path)
+    seg0 = purple.seg_df.assign(tumorCopyNumber=0.0)               # to_seg skips CN <= 0
+    tracks = _tracks_for(tmp_path, purple=PurpleData(baf_df=purple.baf_df, cn_df=purple.cn_df, seg_df=seg0))
+    strips = [t for t in tracks if t["name"] == "Segments (no data)"]
+    assert len(strips) == 2 and all(t["height"] >= 25 for t in strips)
 
 
 def test_supplied_cnvkit_file_that_does_not_exist_is_an_error(tmp_path):

@@ -102,7 +102,7 @@ def render_genome_image(
             browser = p.chromium.launch(**launch_kw)
         except PlaywrightError as e:
             raise RenderError(f"Could not start Chromium: {e}") from e
-        page = None
+        page, rendered = None, False
         try:
             page = browser.new_page(viewport={"width": 1600, "height": 1000})
             page.set_default_timeout(timeout_s * 1000)
@@ -137,6 +137,7 @@ def render_genome_image(
 
             svg = page.evaluate("window.ppExport.svg()")
             png_b64 = page.evaluate("s => window.ppExport.png(s)", scale)
+            rendered = True
         except PlaywrightError as e:
             if page is not None:
                 try:
@@ -145,7 +146,13 @@ def render_genome_image(
                     pass                         # page closed or crashed: report the original error
             raise RenderError(f"Rendering failed: {e}" + (f" [{diagnostics()}]" if diagnostics() else "")) from e
         finally:
-            browser.close()
+            try:
+                browser.close()
+            except PlaywrightError as close_err:
+                # Never let a failed close replace an error already being raised; after a
+                # successful render, report it as a RenderError.
+                if rendered:
+                    raise RenderError(f"Could not close Chromium: {close_err}") from close_err
 
     if blocked or page_errors or csp_violations:
         raise RenderError(diagnostics())

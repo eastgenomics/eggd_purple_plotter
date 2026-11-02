@@ -326,7 +326,7 @@ def test_viewer_reports_igv_js_failing_to_load(viewer, tmp_path):
             b.close()
 
 
-@pytest.mark.parametrize("fail_at", ["new_page", "wait_for_timeout"])
+@pytest.mark.parametrize("fail_at", ["new_page", "wait_for_timeout", "close"])
 def test_playwright_failure_always_becomes_render_error(monkeypatch, tmp_path, fail_at):
     """A Playwright error, even when the page never opened or has crashed, is reported as
     RenderError (which the CLI prints), not UnboundLocalError or a second Playwright error."""
@@ -347,7 +347,9 @@ def test_playwright_failure_always_becomes_render_error(monkeypatch, tmp_path, f
             if fail_at == "new_page":
                 raise pw.Error("cannot open page")
             return Page()
-        def close(self): pass
+        def close(self):
+            if fail_at == "close":
+                raise pw.Error("close failed")
 
     class Fake:
         chromium = type("C", (), {"launch": staticmethod(lambda **k: Browser())})()
@@ -358,4 +360,29 @@ def test_playwright_failure_always_becomes_render_error(monkeypatch, tmp_path, f
     html = tmp_path / "x.html"
     html.write_text("<html></html>")
     with pytest.raises(render_image.RenderError, match="Rendering failed"):
+        render_image.render_genome_image(html, tmp_path / "x", chromium_path="/nonexistent")
+
+
+def test_failed_close_after_success_is_a_render_error(monkeypatch, tmp_path):
+    pw = pytest.importorskip("playwright.sync_api")
+
+    class Page:
+        def evaluate(self, expr, *a):
+            return "<svg/>" if "svg()" in expr else ("ready" if "igvReady" in expr else "")
+        def __getattr__(self, name):
+            return lambda *a, **k: None
+
+    class Browser:
+        def new_page(self, **k): return Page()
+        def close(self): raise pw.Error("close failed")
+
+    class Fake:
+        chromium = type("C", (), {"launch": staticmethod(lambda **k: Browser())})()
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    monkeypatch.setattr(pw, "sync_playwright", lambda: Fake())
+    html = tmp_path / "x.html"
+    html.write_text("<html></html>")
+    with pytest.raises(render_image.RenderError, match="Could not close Chromium"):
         render_image.render_genome_image(html, tmp_path / "x", chromium_path="/nonexistent")

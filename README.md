@@ -214,10 +214,13 @@ load rather than reaching other hosts.
 A `<meta>` CSP cannot carry `frame-ancestors`, reporting or a report-only mode; a site that
 serves the viewers should add the same policy as a response header, with
 `frame-ancestors 'none'`. Browsers enforce both policies, so the header must allow the script
-hashes of **every plotter release whose viewers the site serves**: viewers from v1.1.0 and
-earlier load igv.js from the igv.org CDN and carry no hashes, and each release's `viewer.js`
-has its own hash. Either list the hashes of all releases still being served, or regenerate
-older viewers with the current release before applying a single release's policy.
+hashes of **every plotter release whose viewers the site serves** (each release's `viewer.js`
+has its own hash; list them all while that release's viewers are still served). Viewers from
+v1.1.0 and earlier cannot meet such a policy at all: they load igv.js from the igv.org CDN and
+their inline script contains the sample's data, so it differs per file. Regenerate them with
+v1.2.0 or later before the header is applied. The alternative, a separate legacy policy that
+allows the CDN and `'unsafe-inline'` (or a hash per viewer), brings back the third-party code
+and injection risks this release removes.
 
 ### Script hashes
 

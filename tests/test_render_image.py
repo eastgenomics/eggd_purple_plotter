@@ -178,13 +178,24 @@ def test_cnvkit_only_viewer_initialises_and_igv_save_menu_downloads(viewer):
             page.goto(html.resolve().as_uri())
             page.wait_for_function("() => window.igvReady === true || !!window.igvError", timeout=60000)   # function form: a string predicate is eval()ed, which the page CSP blocks
             assert page.evaluate("window.igvError || null") is None
-            dl_png = save_via_igv_menu(page, "PNG")
-            assert dl_png.suggested_filename.startswith("IMG_TEST.") and dl_png.suggested_filename.endswith(".png")
-            assert Path(dl_png.path()).read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
             dl_svg = save_via_igv_menu(page, "SVG")
             assert dl_svg.suggested_filename.startswith("IMG_TEST.") and dl_svg.suggested_filename.endswith(".svg")
             svg = Path(dl_svg.path()).read_text(encoding="utf-8")
             assert "IMG_TEST" in svg and "Purity 79%" in svg and "Genome hg38" in svg   # banner present
+            dl_png = save_via_igv_menu(page, "PNG")
+            assert dl_png.suggested_filename.startswith("IMG_TEST.") and dl_png.suggested_filename.endswith(".png")
+            png = Path(dl_png.path()).read_bytes()
+            assert png[:8] == b"\x89PNG\r\n\x1a\n"
+            # The PNG is the bannered SVG drawn at 2x: its size equals 2 x the SVG's (banner included),
+            # which igv.js's own PNG export (browser area only, at devicePixelRatio) would not match.
+            import re as _re
+            w, h = (float(x) for x in _re.search(r'viewBox="0 0 ([\d.]+) ([\d.]+)"', svg).groups())
+            pw, ph = int.from_bytes(png[16:20], "big"), int.from_bytes(png[20:24], "big")
+            banner = page.evaluate("""() => { const s = window.ppExport.svg();
+                const d = new DOMParser().parseFromString(s, "image/svg+xml").documentElement;
+                return d.querySelector("rect").getAttribute("height"); }""")
+            assert float(banner) > 0
+            assert (pw, ph) == (round(2 * w), round(2 * h))
         finally:
             b.close()
 
@@ -288,5 +299,28 @@ def test_viewer_start_failure_is_shown_and_viewer_stays_unusable(viewer):
             assert page.evaluate("window.igvError") is not None
             assert "could not start" in page.inner_text("#pp-status")
             _toolbar_unusable(page)
+        finally:
+            b.close()
+
+
+def test_viewer_reports_igv_js_failing_to_load(viewer, tmp_path):
+    """If igv.js itself does not run, the start-up failure is shown instead of "Loading viewer…"."""
+    exe, html, out = viewer
+    from playwright.sync_api import sync_playwright
+    page_html = html.read_text(encoding="utf-8")
+    scripts = [m.span() for m in __import__("re").finditer(r"<script>.*?</script>", page_html, __import__("re").S)]
+    igv_start, igv_end = scripts[0]                         # the inlined igv.js block
+    broken = tmp_path / "noigv.html"
+    broken.write_text(page_html[:igv_start] + page_html[igv_end:], encoding="utf-8")
+    with sync_playwright() as p:
+        b = p.chromium.launch(executable_path=exe, args=["--no-sandbox"])
+        try:
+            page = b.new_page()
+            page.route(lambda u: u.startswith("http"), lambda r: r.abort())
+            page.goto(broken.resolve().as_uri())
+            page.wait_for_function("() => !!window.igvError", timeout=15000)
+            assert "igv is not defined" in page.evaluate("window.igvError")
+            assert "could not start" in page.inner_text("#pp-status")
+            assert page.evaluate("document.getElementById('igv-div').inert") is True
         finally:
             b.close()

@@ -70,6 +70,15 @@ function pruneTracks(list) {
   }).filter(Boolean);
 }
 
+// Start-up failure, whether igv.createBrowser rejects or throws before returning (e.g. if
+// igv.js itself did not load): record it for the renderer and show it; the viewer stays inert.
+function ppStartFailed(e) {
+  window.igvError = String(e);
+  console.error(e);
+  document.getElementById("pp-status").textContent = "The viewer could not start: " + String(e);
+}
+
+try {
 igv.createBrowser(document.getElementById("igv-div"), {
   genome:    "hg38",
   locus:     new URLSearchParams(location.search).get("locus") || ppData.locus,
@@ -180,11 +189,10 @@ igv.createBrowser(document.getElementById("igv-div"), {
   igvDiv.inert = false;
   igvDiv.style.opacity = "";
   document.getElementById("pp-status").remove();
-}).catch(function (e) {
-  window.igvError = String(e);
-  console.error(e);
-  document.getElementById("pp-status").textContent = "The viewer could not start: " + String(e);
-});
+}).catch(ppStartFailed);
+} catch (e) {
+  ppStartFailed(e);
+}
 
 // ── Image export (current view) ─────────────────────────────────────────────
 // Used by igv.js's "Save Image" menu (via the overrides above) and, through

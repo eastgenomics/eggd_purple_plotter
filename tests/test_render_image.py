@@ -299,6 +299,8 @@ def test_viewer_start_failure_is_shown_and_viewer_stays_unusable(viewer):
             held.pop()[0].abort()                         # the genome cannot load
             page.wait_for_function("() => window.igvReady === true || !!window.igvError", timeout=60000)
             assert page.evaluate("window.igvError") is not None
+            page.wait_for_function(   # the status is written on a short delay (live region priming)
+                "() => document.getElementById('pp-status').textContent.includes('could not start')")
             assert "could not start" in page.inner_text("#pp-status")
             _toolbar_unusable(page)
         finally:
@@ -322,6 +324,8 @@ def test_viewer_reports_igv_js_failing_to_load(viewer, tmp_path):
             page.goto(broken.resolve().as_uri())
             page.wait_for_function("() => !!window.igvError", timeout=15000)
             assert "igv is not defined" in page.evaluate("window.igvError")
+            page.wait_for_function(   # the status is written on a short delay (live region priming)
+                "() => document.getElementById('pp-status').textContent.includes('could not start')")
             assert "could not start" in page.inner_text("#pp-status")
             assert page.evaluate("document.getElementById('igv-div').inert") is True
         finally:
@@ -430,5 +434,29 @@ def test_status_sequence_loading_then_loaded(viewer):
             page.wait_for_function("() => window.igvReady === true", timeout=60000)
             page.wait_for_timeout(100)
             assert page.inner_text("#pp-status") == "Viewer loaded."
+        finally:
+            b.close()
+
+
+def test_empty_status_region_stays_in_the_accessibility_tree(viewer):
+    """The empty live region must be present to assistive technology (not display:none) so its
+    first message is announced; it is visually hidden while empty."""
+    exe, html, out = viewer
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as p:
+        b = p.chromium.launch(executable_path=exe, args=["--no-sandbox"])
+        try:
+            page = b.new_page()
+            page.route(lambda u: u.startswith("http"), lambda r: r.abort())
+            page.add_init_script("document.addEventListener('DOMContentLoaded', () => {"
+                                 " const s = document.getElementById('pp-status');"
+                                 " window.__ppEmptyDisplay = getComputedStyle(s).display;"
+                                 " window.__ppEmptyText = s.textContent; });")
+            page.goto(html.resolve().as_uri(), wait_until="domcontentloaded")
+            assert page.evaluate("window.__ppEmptyText") == ""
+            assert page.evaluate("window.__ppEmptyDisplay") != "none"
+            cdp = page.context.new_cdp_session(page)
+            nodes = cdp.send("Accessibility.getFullAXTree")["nodes"]
+            assert any(n.get("role", {}).get("value") == "status" and not n.get("ignored") for n in nodes)
         finally:
             b.close()

@@ -18,7 +18,7 @@ Given per-sample input files, the app:
 3. Extracts the PURPLE tar archive to obtain AMBER BAF, target-region CN, and PURPLE segment TSVs (if supplied).
 4. Reads purity, ploidy and the fit status from the purity/ploidy report (PURPLE `purity.tsv` or compatible, if supplied). The fit status is not a QC verdict. If absent, these show `?` and the segment tracks assume ploidy 2.0, with a warning.
 5. Reads MSI score (if supplied; defaults to `?` if absent).
-6. Converts all available data to bedgraph/SEG strings; omits tracks for any absent input.
+6. Converts all available data to bedgraph/SEG strings; omits tracks for any absent input, and labels tracks of supplied inputs with no rows "(no data)".
 7. Renders a single HTML file embedding igv.js and all track data (read through JavaScript blob URLs); the hg38 genome is fetched when the file is opened.
 8. Uploads the HTML file and sets it as the `igv_html` output.
 

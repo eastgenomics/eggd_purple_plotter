@@ -18,7 +18,7 @@ Given per-sample input files, the app:
 6. Renders a single HTML file with up to 7 igv.js tracks (igv.js and track data embedded)
 7. Uploads the HTML and registers it as the `igv_html` output
 
-Missing optional inputs are handled gracefully — tracks are simply omitted.
+Tracks whose input was not supplied are omitted. If an input was supplied but has no rows to plot (for example a genemetrics file with no genes), its track is kept, empty, and its name ends in "(no data)", so the two cases can be told apart.
 
 ---
 
@@ -136,7 +136,8 @@ no gene-annotation track.
 
 On DNAnexus, set `genome_image=true` to also get `{sample_id}.genome.png` and
 `.svg` outputs. Playwright and Chromium come from the `pp_headless_chromium` asset
-(source in `asset/`), listed under `runSpec.assetDepends` in `dxapp.json`. The asset
+(source in `asset/`), pinned by record ID under `runSpec.assetDepends` in `dxapp.json`,
+so a build always uses that exact bundle. The asset
 is always downloaded to the worker, even when `genome_image` is false, because
 `assetDepends` cannot be conditional.
 
@@ -151,6 +152,8 @@ dx build_asset asset -d <project>:/app_assets/pp_headless_chromium/pp_headless_c
 
 Current record: `001_Reference:/app_assets/pp_headless_chromium/pp_headless_chromium_v1.0.0/pp_headless_chromium`
 (`record-JFV8Y9Q42qG5FFbkGjQq23Kj`). Build takes ~5 min; ~440 MB installed.
+After rebuilding, put the new record ID in `dxapp.json` (`"id"`, with `name`/`version` kept for
+readability).
 
 ### Run on DNAnexus
 
@@ -253,7 +256,7 @@ prints the two `sha256-…` values. For v1.2.0:
 | Script | Hash |
 |---|---|
 | igv.js 3.8.3 | `sha256-rPTumc3JG+iEIDkw25w5W8hiZ1UpM7SD2gtgnBbqBao=` |
-| viewer.js | `sha256-BDRIr/Fs6a2JJ9MYwwk65v16KpAN2kODnRnMi73rd9E=` |
+| viewer.js | `sha256-83SC/4ark48iydghFAHBeMTVa/OzXPJWU68kjgU4VfQ=` |
 
 Any change to `viewer.js` or `igv.min.js` changes these; record the new values with each release.
 

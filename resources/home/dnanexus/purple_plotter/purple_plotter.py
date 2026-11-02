@@ -121,10 +121,14 @@ def load_cnvkit_data(
     call_cns:    "Path | None",
     genemetrics: "Path | None",
 ) -> CNVkitData:
-    """Load CNVkit files. Any absent path → None DataFrame in returned dataclass."""
+    """Load CNVkit files. An omitted path (None) → None DataFrame, i.e. input not supplied.
+    A supplied path that does not exist raises FileNotFoundError: it must not be shown as
+    "not supplied"."""
     def _read(p: "Path | None") -> "pd.DataFrame | None":
-        if p is None or not Path(p).exists():
+        if p is None:
             return None
+        if not Path(p).is_file():
+            raise FileNotFoundError(f"CNVkit input {p} does not exist")
         return pd.read_csv(p, sep="\t")
     return CNVkitData(
         cnr_df = _read(cnr),
@@ -366,8 +370,11 @@ const ppSupplied = {{ purple: {has_purple}, cnvkit_cnr: {has_cnvkit_cnr},
                       cnvkit_call_cns: {has_cnvkit_call_cns}, cnvkit_genemetrics: {has_cnvkit_genemetrics} }};
 const absentBlobs = new Set(), noDataBlobs = new Set();
 
+// True if the text has any data row. Only the first line can be a SEG header (the converters
+// write "SampleID\\tChromosome\\t..." first), so a sample really named "SampleID" still counts.
 function hasRows(txt) {{
-  return txt.split("\\n").some(function (l) {{ return l.trim() && !l.startsWith("SampleID\\t"); }});
+  const body = txt.startsWith("SampleID\\tChromosome\\t") ? txt.slice(txt.indexOf("\\n") + 1 || txt.length) : txt;
+  return /\\S/.test(body);
 }}
 
 function blob(txt, input) {{
@@ -385,6 +392,7 @@ function pruneTracks(list) {{
     const out = t.tracks ? Object.assign({{}}, t, {{ tracks: kept }}) : Object.assign({{}}, t);
     if (kept.every(function (c) {{ return noDataBlobs.has(c.url); }})) {{   // supplied, no rows
       out.name = ((t.name || "").trim() || "Segments") + " (no data)";
+      if ((out.height || 0) < 25) out.height = 25;                       // room for the label
     }}
     return out;
   }}).filter(Boolean);
@@ -603,11 +611,14 @@ def main() -> None:
     purple = load_purple_data(Path(args.purple_tar)) if args.purple_tar else None
     qc     = load_qc_data(Path(args.qc_report) if args.qc_report else None)
     msi    = load_msi_data(Path(args.msi_report) if args.msi_report else None)
-    cnvkit = load_cnvkit_data(
-        Path(args.cnvkit_cnr)         if args.cnvkit_cnr         else None,
-        Path(args.cnvkit_call_cns)    if args.cnvkit_call_cns    else None,
-        Path(args.cnvkit_genemetrics) if args.cnvkit_genemetrics else None,
-    )
+    try:
+        cnvkit = load_cnvkit_data(
+            Path(args.cnvkit_cnr)         if args.cnvkit_cnr         else None,
+            Path(args.cnvkit_call_cns)    if args.cnvkit_call_cns    else None,
+            Path(args.cnvkit_genemetrics) if args.cnvkit_genemetrics else None,
+        )
+    except FileNotFoundError as e:
+        ap.exit(1, f"ERROR: {e}\n")
 
     inputs = PlotInputs(
         sample_id = args.sample,

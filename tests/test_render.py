@@ -153,17 +153,19 @@ const ctx = {
 };
 ctx.window = ctx;
 require("vm").runInNewContext(scripts.join("\n"), ctx);
-const rows = (t) => t.split("\n").some(l => l.trim() && !l.startsWith("SampleID\t"));
+// Independent of the viewer's own check: drop a first line that is the SEG column header.
+const rows = (t) => { const ls = t.split("\n"); if (ls[0] === "SampleID\tChromosome\tStart\tEnd\tNum_Probes\tSeg_Mean") ls.shift();
+                      return ls.some(l => l.trim()); };
 const flat = (t) => (t.tracks || [t]).map(c => ({ empty: !rows(texts[c.url]) }));
 const nonempty = Object.values(texts).filter(rows).length;
 process.stdout.write(JSON.stringify({
   nonempty,
-  tracks: cfg.tracks.map(t => ({ name: t.name, children: flat(t) })),
+  tracks: cfg.tracks.map(t => ({ name: t.name, height: t.height, children: flat(t) })),
 }));
 """
 
 
-def _tracks_for(tmp_path, **kw):
+def _tracks_for(tmp_path, sample_id="S001", **kw):
     """Render, run the page script under node with igv stubbed.
 
     Returns [{name, children:[{empty}]}] ("empty" = no data rows). Also asserts every data blob
@@ -172,7 +174,7 @@ def _tracks_for(tmp_path, **kw):
     node = shutil.which("node")
     if node is None:
         pytest.skip("node not available")
-    out = write_html(PlotInputs(sample_id="S001", **kw), tmp_path)
+    out = write_html(PlotInputs(sample_id=sample_id, **kw), tmp_path)
     harness = tmp_path / "harness.js"
     harness.write_text(HARNESS)
     res = subprocess.run([node, str(harness), str(out)], capture_output=True, text=True, check=True)  # nosec B603
@@ -257,3 +259,30 @@ def test_supplied_segments_with_no_rows_are_labelled(tmp_path):
     cn = load_cnvkit_data(FIXTURES / "sample.cnr", None, None)
     names = [t["name"] for t in _tracks_for(tmp_path, cnvkit=CNVkitData(cnr_df=cn.cnr_df, cns_df=cns))]
     assert names == ["CNVkit log\u2082", "CNVkit segments (no data)"]
+
+
+def test_sample_named_like_the_seg_header_is_not_no_data(tmp_path):
+    """Only the first SEG line is a header: a sample literally called "SampleID" still has rows."""
+    tracks = _tracks_for(tmp_path, sample_id="SampleID", purple=_purple(tmp_path))
+    assert not any(t["name"].endswith("(no data)") for t in tracks)
+    assert [t["name"] for t in tracks].count(" ") == 2                 # both PURPLE segment strips
+
+
+def test_no_data_segment_track_is_tall_enough_for_its_label(tmp_path):
+    import pandas as pd
+    from purple_plotter import CNVkitData
+    cns = pd.DataFrame({"chromosome": ["chrUn"], "start": [1], "end": [2], "log2": [0.1], "cn": [2], "probes": [1]})
+    cn = load_cnvkit_data(FIXTURES / "sample.cnr", None, None)
+    tracks = {t["name"]: t for t in _tracks_for(tmp_path, cnvkit=CNVkitData(cnr_df=cn.cnr_df, cns_df=cns))}
+    assert tracks["CNVkit segments (no data)"]["height"] >= 25
+
+
+def test_supplied_cnvkit_file_that_does_not_exist_is_an_error(tmp_path):
+    with pytest.raises(FileNotFoundError, match="does not exist"):
+        load_cnvkit_data(tmp_path / "nope.cnr", None, None)
+    r = subprocess.run([
+        sys.executable, str(SCRIPT), "--sample", "X", "--cnvkit_cnr", str(FIXTURES / "sample.cnr"),
+        "--cnvkit_genemetrics", str(tmp_path / "missing.genemetrics.csv"), "--output_dir", str(tmp_path),
+    ], capture_output=True, text=True)  # nosec B603 -- our own CLI with fixed arguments
+    assert r.returncode != 0 and "does not exist" in r.stderr and "Traceback" not in r.stderr
+    assert not (tmp_path / "X.igv.bars.html").exists()

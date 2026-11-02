@@ -439,22 +439,20 @@ def test_status_sequence_loading_then_loaded(viewer):
 
 
 def test_empty_status_region_stays_in_the_accessibility_tree(viewer):
-    """The empty live region must be present to assistive technology (not display:none) so its
-    first message is announced; it is visually hidden while empty."""
+    """The empty live region must be present to assistive technology (not display:none or
+    visibility:hidden) so its first message is announced; it is visually hidden while empty.
+    Scripts are disabled so the region is guaranteed to still be empty when inspected."""
     exe, html, out = viewer
     from playwright.sync_api import sync_playwright
     with sync_playwright() as p:
         b = p.chromium.launch(executable_path=exe, args=["--no-sandbox"])
         try:
-            page = b.new_page()
-            page.route(lambda u: u.startswith("http"), lambda r: r.abort())
-            page.add_init_script("document.addEventListener('DOMContentLoaded', () => {"
-                                 " const s = document.getElementById('pp-status');"
-                                 " window.__ppEmptyDisplay = getComputedStyle(s).display;"
-                                 " window.__ppEmptyText = s.textContent; });")
-            page.goto(html.resolve().as_uri(), wait_until="domcontentloaded")
-            assert page.evaluate("window.__ppEmptyText") == ""
-            assert page.evaluate("window.__ppEmptyDisplay") != "none"
+            page = b.new_context(java_script_enabled=False).new_page()
+            page.goto(html.resolve().as_uri())
+            assert page.inner_text("#pp-status") == ""
+            style = page.evaluate("[getComputedStyle(document.getElementById('pp-status')).display,"
+                                  " getComputedStyle(document.getElementById('pp-status')).visibility]")
+            assert style[0] != "none" and style[1] != "hidden"
             cdp = page.context.new_cdp_session(page)
             nodes = cdp.send("Accessibility.getFullAXTree")["nodes"]
             assert any(n.get("role", {}).get("value") == "status" and not n.get("ignored") for n in nodes)

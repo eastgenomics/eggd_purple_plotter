@@ -29,9 +29,29 @@ main() {
     mark-section "Generating IGV bars HTML"
     /tmp/ppenv/bin/python3 /home/dnanexus/purple_plotter/purple_plotter.py "${args[@]}"
 
+    if [ "${genome_image:-false}" = "true" ]; then
+        mark-section "Rendering whole-genome image"
+        # Playwright + Chromium come from the pp_headless_chromium asset (see asset/)
+        if [ ! -x /opt/pp_render/bin/python3 ]; then
+            echo "ERROR: genome_image requested but the pp_headless_chromium asset is not installed" >&2
+            exit 1
+        fi
+        PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright /opt/pp_render/bin/python3 \
+            /home/dnanexus/purple_plotter/render_image.py \
+            --html "${HOME}/${sample_id}.igv.bars.html" \
+            --out_prefix "${HOME}/${sample_id}.genome"
+    fi
+
     mark-section "Uploading output"
     igv_html=$(dx upload "${HOME}/${sample_id}.igv.bars.html" --brief)
     dx-jobutil-add-output igv_html "${igv_html}" --class=file
+
+    if [ "${genome_image:-false}" = "true" ]; then
+        genome_png=$(dx upload "${HOME}/${sample_id}.genome.png" --brief)
+        dx-jobutil-add-output genome_png "${genome_png}" --class=file
+        genome_svg=$(dx upload "${HOME}/${sample_id}.genome.svg" --brief)
+        dx-jobutil-add-output genome_svg "${genome_svg}" --class=file
+    fi
 
     mark-success
 }

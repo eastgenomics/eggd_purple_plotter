@@ -182,8 +182,10 @@ Every generated viewer has the same structure:
 Items 3 and 4 are **byte-identical for every sample**. igv.js builds click popups as HTML from
 raw values, so for segment tracks, whose popups show the sample ID from the SEG data,
 `viewer.js` supplies its own popup content with every value HTML-escaped (the CSP stops
-scripts, not injected markup); other tracks keep igv.js's own popup, which holds only numbers,
-our fixed track names and igv.js's own markup; the per-sample HTML-context values
+scripts, not injected markup). The embedded coverage, CN, BAF and CNVkit wig/merged tracks keep
+igv.js's own popup, which holds only numbers, our fixed track names and igv.js's own markup. The
+RefSeq gene track is external annotation from UCSC, rendered by igv.js's own popup with its text
+and links, as in any igv.js viewer; the per-sample HTML-context values
 (`<title>`, header) are HTML-escaped. Tabs, CR and LF in the sample ID are replaced with `_`
 in the SEG track data, where the ID is a tab-delimited column. The CSP lets only those two scripts run, by hash:
 
@@ -247,7 +249,7 @@ prints the two `sha256-…` values. For v1.1.0:
 | Script | Hash |
 |---|---|
 | igv.js 3.8.3 | `sha256-rPTumc3JG+iEIDkw25w5W8hiZ1UpM7SD2gtgnBbqBao=` |
-| viewer.js | `sha256-YcdyUx7CP9qR7lLXGZy2FnNPpc6z+0cW67CrmFdaCLQ=` |
+| viewer.js | `sha256-mz/KeqnGB3u9kqEgnMnLBMcZGPb7AF1vn/BDxDB7AZ0=` |
 
 Any change to `viewer.js` or `igv.min.js` changes these; record the new values with each release.
 

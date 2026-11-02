@@ -49,9 +49,10 @@ const segData            = ppData.seg_data;
 // "S<b>x</b>" in a SEG track would become markup (the CSP stops scripts, not markup).
 // Segment tracks are the only ones whose popups carry text from the data (the SEG sample
 // column), so for them every value is HTML-escaped here, in the same layout igv.js uses.
-// All other tracks keep igv.js's own popup: wig/merged popups hold only numbers and our
-// fixed track names, plus igv.js's own markup (merged-track headers, &nbsp; padding) that
-// escaping would show as literal text; the RefSeq annotation has igv.js's links.
+// All other tracks keep igv.js's own popup. The embedded wig/merged tracks hold only numbers
+// and our fixed track names, plus igv.js's own markup (merged-track headers, &nbsp; padding)
+// that escaping would show as literal text. The RefSeq gene track is external annotation
+// (UCSC) with igv.js's own text and links.
 const PP_ESCAPED_POPUP_TYPES = new Set(["seg"]);
 function ppEsc(v) {
   return String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")

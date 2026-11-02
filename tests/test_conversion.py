@@ -95,3 +95,27 @@ def test_genemetrics_to_bedgraph_skips_nonfinite():
     bg = genemetrics_to_bedgraph(gm)
     lines = [l for l in bg.splitlines() if l.strip()]
     assert len(lines) == 1
+
+
+def test_bedgraph_converters_emit_only_numeric_columns():
+    """wig/merged popups are shown unescaped (igv.js's own), which is safe only while the
+    bedgraph strings carry no free text: chromosome, two integer coordinates, one number."""
+    import re
+    import pandas as pd
+    from purple_plotter import (cnr_to_bedgraph, genemetrics_to_bedgraph, coverage_log2_bedgraph,
+                                baf_bedgraph, baf_bedgraph_mirror, cn_bars_by_state, baf_seg_bars_by_state)
+    evil = "<img src=x onerror=alert(1)>"
+    cnr = pd.DataFrame({"chromosome": ["chr1", evil], "start": [1, 2], "end": [10, 20],
+                        "gene": [evil, evil], "log2": [0.5, 0.1], "depth": [1, 1], "weight": [1, 1]})
+    gm = cnr.assign(probes=1)
+    cn = pd.DataFrame({"chromosome": ["chr1"], "windowStart": [1], "windowEnd": [10],
+                       "windowTumorRatio": [1.1], "masked": [0]})
+    baf = pd.DataFrame({"chromosome": ["chr1"], "position": [5], "tumorBAF": [0.6], "normalBAF": [0.5]})
+    seg = pd.DataFrame({"chromosome": ["chr1"], "start": [1], "end": [10], "tumorCopyNumber": [3.0],
+                        "tumorBAF": [0.6]})
+    outs = [cnr_to_bedgraph(cnr), genemetrics_to_bedgraph(gm), coverage_log2_bedgraph(cn),
+            baf_bedgraph(baf), baf_bedgraph_mirror(baf)]
+    outs += list(cn_bars_by_state(seg, 2.0).values()) + list(baf_seg_bars_by_state(seg, 2.0).values())
+    row = re.compile(r"^chr(\d+|X)\t\d+\t\d+\t-?\d+(\.\d+)?$")
+    lines = [l for o in outs for l in o.splitlines() if l.strip()]
+    assert lines and all(row.match(l) for l in lines), [l for l in lines if not row.match(l)]

@@ -1,11 +1,13 @@
 # eggd_purple_plotter — IGV bars HTML viewer for PURPLE/CNVkit CNV outputs
 
 `eggd_purple_plotter` is a DNAnexus app that takes per-sample outputs from the
-PURPLE/AMBER/CNVkit pipeline and generates a fully self-contained IGV.js HTML
-file showing copy-number and allele-frequency tracks. The HTML embeds all track
-data as in-memory blob URLs — no server is required to view it. igv.js 3.8.3 is
-loaded from the igv.org CDN at view time, so an internet connection is needed to
-render the tracks.
+PURPLE/AMBER/CNVkit pipeline and generates a single-file IGV.js HTML viewer
+showing copy-number and allele-frequency tracks. From v1.1.0, igv.js 3.8.3 and all
+track data are embedded in the HTML and a Content-Security-Policy lets only those
+scripts run (see the main README, "Security"). The hg38 genome and RefSeq
+annotation are fetched from igv.org and UCSC when the file is opened, so an internet
+connection to those hosts is needed to render it. (v1.0.0 loaded igv.js from the
+igv.org CDN.)
 
 ## What this app does
 
@@ -17,7 +19,7 @@ Given per-sample input files, the app:
 4. Reads the QC report for purity, ploidy, and QC status (if supplied; defaults to `?` if absent).
 5. Reads MSI score (if supplied; defaults to `?` if absent).
 6. Converts all available data to bedgraph/SEG strings; omits tracks for any absent input, and labels tracks of supplied inputs with no rows "(no data)".
-7. Renders a single self-contained HTML file embedding all data as JavaScript blob URLs.
+7. Renders a single HTML file embedding igv.js and all track data (read through JavaScript blob URLs); the hg38 genome is fetched when the file is opened.
 8. Uploads the HTML file and sets it as the `igv_html` output.
 
 All data-conversion and HTML-generation logic lives in a pure Python module
@@ -25,17 +27,19 @@ All data-conversion and HTML-generation logic lives in a pure Python module
 
 ## Status of this document set
 
-These documents are the **complete design and build specification**. A fresh
-agent session (or a human developer) should be able to open this directory, read
-the files in order, and build a working, tested app without needing the original
-conversation.
+These documents were written as the design and build specification for v1.0.0.
+DESIGN.md and REFERENCE.md are kept current. IMPLEMENTATION.md and build-prompt.md are
+**historical v1.0.0 build instructions** (CDN-loaded igv.js, data in JavaScript template
+literals) and must not be followed for current work: from v1.1.0, igv.js is inlined and
+hash-checked, per-sample data is in a non-executable JSON block, and a Content-Security-Policy
+pins the scripts. For the current code, read the main README ("Security") and the source.
 
 Read in this order:
 
 1. **README.md** (this file) — orientation and quick start
 2. **DESIGN.md** — architecture, module responsibilities, data model, error strategy, testing strategy
-3. **IMPLEMENTATION.md** — milestone-by-milestone TDD build plan with code sketches
-4. **REFERENCE.md** — input/output file formats, igv.js track config, env vars, external dependencies, glossary
+3. **REFERENCE.md** — input/output file formats, igv.js track config, env vars, external dependencies, glossary
+4. **IMPLEMENTATION.md** — *historical (v1.0.0)* milestone-by-milestone build plan
 
 ## Project layout (target)
 
@@ -118,5 +122,5 @@ BAF, and segment calls without installing any software.
 - Does not perform any variant filtering, re-calling, or QC flagging.
 - Does not upload the HTML to S3 or any external storage — that is a separate step.
 - Does not support WGS BAM visualisation (no BAM/BAI inputs).
-- Does not embed the igv.js library locally — it loads igv.js 3.8.3 from `igv.org` CDN at view time.
+- Does not embed the hg38 genome or annotation — the viewer fetches them from igv.org and UCSC when opened. (igv.js itself is embedded from v1.1.0.)
 - Does not support genome builds other than hg38.

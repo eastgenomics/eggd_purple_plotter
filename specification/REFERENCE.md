@@ -12,6 +12,7 @@
 | `cnvkit_genemetrics` | `file` | Yes | — | `{sample}.genemetrics.csv` from CNVkit |
 | `msi_report` | `file` | Yes | — | `{sample}.msi.tsv` from the MSI stage |
 | `locus` | `string` | Yes | `"all"` | Initial IGV locus; any valid IGV locus string (e.g. `"chr7:116,672,196-117,120,285"`) |
+| `genome_image` | `boolean` | Yes | `false` | Also render the whole-genome view (always locus `all`) to PNG and SVG with headless Chromium from the `pp_headless_chromium` asset; the job fails if rendering fails |
 
 **Minimum viable inputs:** `sample_id` + (`purple_tar` and/or `cnvkit_cnr`).
 App exits 1 if neither `purple_tar` nor `cnvkit_cnr` is present.
@@ -20,7 +21,9 @@ App exits 1 if neither `purple_tar` nor `cnvkit_cnr` is present.
 
 | Name | Class | Description |
 |---|---|---|
-| `igv_html` | `file` | `{sample_id}.igv.bars.html` — fully self-contained HTML; no server required to view |
+| `igv_html` | `file` | `{sample_id}.igv.bars.html` — HTML viewer; no server required; hg38 genome fetched from igv.org/UCSC when opened |
+| `genome_png` | `file`, optional | `{sample_id}.genome.png` — whole-genome view at 2× with the sample/QC banner; only when `genome_image=true` |
+| `genome_svg` | `file`, optional | `{sample_id}.genome.svg` — the same view as SVG; only when `genome_image=true` |
 
 ---
 
@@ -133,7 +136,8 @@ Tab-separated. Standard CNVkit `.call.cns` format.
 
 ### 3.6 CNVkit genemetrics (`cnvkit_genemetrics`)
 
-Comma-separated (`.csv`). Standard CNVkit genemetrics output.
+Tab-separated, despite the `.genemetrics.csv` extension (CNVkit writes tabs); it is read with
+`sep="\t"`.
 
 | Column | Type | Description |
 |---|---|---|
@@ -146,12 +150,13 @@ Comma-separated (`.csv`). Standard CNVkit genemetrics output.
 
 ## 4. Output file format
 
-A self-contained HTML file. Key structural elements:
+A single HTML file (structure from v1.1.0; v1.0.0 loaded igv.js from the igv.org CDN and held the track data in JS template literals). Key structural elements:
 
 ```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <meta http-equiv="Content-Security-Policy" content="...">  <!-- script-src: the two script hashes -->
   <title>IGV bars — {sample_id}</title>
   <!-- inline CSS -->
 </head>
@@ -160,12 +165,10 @@ A self-contained HTML file. Key structural elements:
   <div id="igv-div">  <!-- igv.js mounts here (shadow DOM) -->
   <div id="leg">   <!-- colour legend -->
 
-  <script src="https://igv.org/web/release/3.8.3/dist/igv.min.js"></script>
-  <script>
-    // All track data as JS template literals assigned to const variables
-    // Each is passed to URL.createObjectURL(new Blob([...]))
-    // igv.createBrowser(...) called with 7 tracks
-  </script>
+  <script type="application/json" id="pp-data">{...}</script>  <!-- all per-sample data, not executed -->
+  <!-- igv.js MIT licence -->
+  <script>/* igv.min.js 3.8.3, identical in every file */</script>
+  <script>/* viewer.js, identical in every file: reads pp-data, builds blob: URLs, igv.createBrowser(...) */</script>
 </body>
 </html>
 ```
@@ -298,7 +301,7 @@ Input names from `inputSpec` are available as Bash variables (e.g. `${sample_id}
 | Dependency | Purpose | Version |
 |---|---|---|
 | `pandas` | DataFrame I/O and manipulation | ≥2.0 |
-| `igv.js` | Browser-side genome viewer | 3.8.3 (CDN) |
+| `igv.js` | Browser-side genome viewer | 3.8.3 (embedded from v1.1.0; CDN in v1.0.0) |
 | `dx` CLI | DNAnexus file download/upload in `code.sh` | any (provided by platform) |
 
 All Python stdlib modules used: `argparse`, `gzip`, `io`, `math`, `tarfile`, `pathlib`.

@@ -16,7 +16,8 @@ main() {
     /tmp/ppenv/bin/pip install --no-index --no-deps /home/dnanexus/packages/*
 
     mark-section "Building arguments"
-    args=("--sample" "${sample_id}" "--output_dir" "${HOME}/")
+    # "--sample=<id>" form, so an ID starting with "-" is not read as an option
+    args=("--sample=${sample_id}" "--output_dir" "${HOME}/")
 
     [ -n "${purple_tar:-}" ]         && args+=("--purple_tar"         "$(ls ~/in/purple_tar/*)")  
     [ -n "${qc_report:-}" ]          && args+=("--qc_report"          "$(ls ~/in/qc_report/*)")

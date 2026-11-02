@@ -27,10 +27,10 @@ def test_render_html_is_valid_html():
     assert "</html>" in html
 
 
-def test_render_html_cdn_tag():
-    inputs = PlotInputs(sample_id="S001")
-    html = render_html(inputs)
-    assert "igv.org/web/release/3.8.3" in html
+def test_no_remote_script():
+    html = render_html(PlotInputs(sample_id="S001"))
+    assert "<script src=" not in html
+    assert "igv.org/web/release" not in html
 
 
 def test_render_html_qc_defaults_shown():
@@ -81,7 +81,7 @@ def _make_tar(tmp_path, sample="sample"):
 def test_cli_purple_only(tmp_path):
     tar = _make_tar(tmp_path)
     r = subprocess.run([
-        "python3", str(SCRIPT),
+        sys.executable, str(SCRIPT),
         "--sample", "S001",
         "--purple_tar", str(tar),
         "--qc_report", str(FIXTURES / "sample.qc_report.tsv"),
@@ -95,7 +95,7 @@ def test_cli_purple_only(tmp_path):
 
 def test_cli_cnvkit_only(tmp_path):
     r = subprocess.run([
-        "python3", str(SCRIPT),
+        sys.executable, str(SCRIPT),
         "--sample", "S002",
         "--cnvkit_cnr", str(FIXTURES / "sample.cnr"),
         "--output_dir", str(tmp_path),
@@ -106,7 +106,7 @@ def test_cli_cnvkit_only(tmp_path):
 
 def test_cli_no_data_exits_nonzero(tmp_path):
     r = subprocess.run([
-        "python3", str(SCRIPT),
+        sys.executable, str(SCRIPT),
         "--sample", "S003",
         "--output_dir", str(tmp_path),
     ], capture_output=True, text=True)
@@ -117,7 +117,7 @@ def test_cli_no_data_exits_nonzero(tmp_path):
 def test_cli_all_inputs(tmp_path):
     tar = _make_tar(tmp_path)
     r = subprocess.run([
-        "python3", str(SCRIPT),
+        sys.executable, str(SCRIPT),
         "--sample", "S004",
         "--purple_tar", str(tar),
         "--qc_report", str(FIXTURES / "sample.qc_report.tsv"),
@@ -139,28 +139,38 @@ def test_cli_all_inputs(tmp_path):
 HARNESS = r"""
 const fs = require("fs");
 const html = fs.readFileSync(process.argv[2], "utf8");
+// Run only the viewer code (the last plain <script>); igv.js itself is stubbed below.
 const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+const viewer = scripts[scripts.length - 1];
+const dataJson = html.match(/<script type="application\/json" id="pp-data">([\s\S]*?)<\/script>/)[1];
 const texts = {};
 let n = 0, cfg = null;
 class StubBlob { constructor(parts) { this.t = parts.join(""); } }
-const noop = () => ({ addEventListener() {}, appendChild() {}, remove() {}, click() {} });
+const noop = () => ({ addEventListener() {}, appendChild() {}, remove() {}, click() {}, classList: { toggle() {} }, style: {} });
 const ctx = {
   Blob: StubBlob,
   URL: { createObjectURL(b) { const u = "blob:" + (n++); texts[u] = b.t; return u; }, revokeObjectURL() {} },
-  document: { getElementById: noop, createElement: noop, body: noop() },
+  document: {
+    getElementById: (id) => id === "pp-data" ? { textContent: dataJson } : noop(),
+    createElement: noop, body: noop(),
+  },
   igv: { createBrowser(_el, c) { cfg = c; return Promise.resolve({}); } },
   location: { search: "" }, URLSearchParams,
   console, setTimeout,
 };
 ctx.window = ctx;
-require("vm").runInNewContext(scripts.join("\n"), ctx);
+require("vm").runInNewContext(viewer, ctx);
 // Independent of the viewer's own check: drop a first line that is the SEG column header.
 const rows = (t) => { const ls = t.split("\n"); if (ls[0] === "SampleID\tChromosome\tStart\tEnd\tNum_Probes\tSeg_Mean") ls.shift();
                       return ls.some(l => l.trim()); };
 const flat = (t) => (t.tracks || [t]).map(c => ({ empty: !rows(texts[c.url]) }));
 const nonempty = Object.values(texts).filter(rows).length;
+const segSamples = Object.values(texts).filter(t => t.startsWith("SampleID\t"))
+  .map(t => t.split("\n")[1]).filter(Boolean).map(l => l.split("\t")[0]);
 process.stdout.write(JSON.stringify({
   nonempty,
+  injected: ctx.INJECTED === undefined ? null : String(ctx.INJECTED),
+  segSamples,
   tracks: cfg.tracks.map(t => ({ name: t.name, height: t.height, children: flat(t) })),
 }));
 """
@@ -175,11 +185,14 @@ def _tracks_for(tmp_path, sample_id="S001", **kw):
     node = shutil.which("node")
     if node is None:
         pytest.skip("node not available")
-    out = write_html(PlotInputs(sample_id=sample_id, **kw), tmp_path)
+    kw["sample_id"] = sample_id
+    out = tmp_path / "page.html"        # fixed name: sample ids may contain '/' etc.
+    out.write_text(render_html(PlotInputs(**kw)))
     harness = tmp_path / "harness.js"
     harness.write_text(HARNESS)
     res = subprocess.run([node, str(harness), str(out)], capture_output=True, text=True, check=True)  # nosec B603
     parsed = json.loads(res.stdout)
+    _tracks_for.last = parsed
     kept = sum(1 for t in parsed["tracks"] for c in t["children"] if not c["empty"])
     assert kept == parsed["nonempty"], f"{kept} populated tracks kept but {parsed['nonempty']} blobs have data"
     return parsed["tracks"]
@@ -229,16 +242,141 @@ def test_full_inputs_keep_all_tracks(tmp_path):
     assert sum(len(t["children"]) for t in tracks) > 7   # merged tracks keep their several children
 
 
-def test_render_html_has_export_buttons_and_hooks():
+def test_render_html_has_no_extra_save_buttons_and_hooks_igv_save_menu():
     html = render_html(PlotInputs(sample_id="S001"))
-    assert 'id="btn-svg"' in html and 'id="btn-png"' in html
+    assert "<button" not in html.split("<script")[0]              # no extra buttons: igv.js's Save Image menu is used
+    assert "b.saveSVGtoFile = ppSaveSvg" in html and "b.savePNGtoFile = ppSavePng" in html
     assert "window.ppExport" in html
     assert "window.igvReady" in html
 
 
 def test_render_html_export_filename_is_sanitised():
     html = render_html(PlotInputs(sample_id='a b/"c`${x}</script>'))
-    assert 'const ppSampleFile = "a_b_c_x_script_";' in html
+    assert '"sample_file":"a_b_c_x_script_"' in html
+
+
+HOSTILE_IDS = [
+    "A`B",
+    "A${alert(1)}B",
+    "A\\${globalThis.INJECTED=123}\\`B",
+    "A\\B",
+    "A</script><script>globalThis.INJECTED=1</script>",
+    "A<!--<script>B",
+    "A\u2028B\u2029C",
+    'A"B\'C',
+    "A&amp;B",
+]
+
+
+@pytest.mark.parametrize("sid", HOSTILE_IDS)
+def test_hostile_sample_ids(tmp_path, sid):
+    """Hostile sample IDs stay data: the page structure is unchanged, the JSON block decodes to the
+    exact ID, the header shows it HTML-escaped, the executable scripts are identical to a plain ID's,
+    nothing runs, and the ID round-trips into the PURPLE and CNVkit SEG data."""
+    import html as _h
+    from html.parser import HTMLParser
+    cn = load_cnvkit_data(FIXTURES / "sample.cnr", FIXTURES / "sample.call.cns", None)
+    _tracks_for(tmp_path, sample_id=sid, purple=_purple(tmp_path), cnvkit=cn)
+    out = _tracks_for.last
+    assert out["injected"] is None
+    assert len(out["segSamples"]) >= 2 and all(s.removesuffix("_cnvkit") == sid for s in out["segSamples"])
+
+    page = (tmp_path / "page.html").read_text(encoding="utf-8")
+
+    class Scripts(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=False)
+            self.blocks, self._cur = [], None
+        def handle_starttag(self, tag, attrs):
+            if tag == "script":
+                self._cur = [dict(attrs).get("type"), ""]
+        def handle_endtag(self, tag):
+            if tag == "script" and self._cur is not None:
+                self.blocks.append(tuple(self._cur)); self._cur = None
+        def handle_data(self, d):
+            if self._cur is not None: self._cur[1] += d
+
+    p = Scripts(); p.feed(page)
+    assert [t for t, _ in p.blocks] == ["application/json", None, None]   # exactly the 3 expected scripts
+    data = json.loads(p.blocks[0][1])
+    assert data["seg_data"].split("\n")[1].split("\t")[0] == sid
+    assert "<title>IGV bars — " + _h.escape(sid) + "</title>" in page
+
+    plain = render_html(PlotInputs(sample_id="S001"))
+    q = Scripts(); q.feed(plain)
+    assert [b for t, b in p.blocks if t is None] == [b for t, b in q.blocks if t is None]
+
+
+POPUP_HARNESS = r"""
+const fs = require("fs");
+const html = fs.readFileSync(process.argv[2], "utf8");
+const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+const dataJson = html.match(/<script type="application\/json" id="pp-data">([\s\S]*?)<\/script>/)[1];
+const noop = () => ({ addEventListener() {}, appendChild() {}, remove() {}, click() {}, classList: { toggle() {} }, style: {} });
+const ctx = {
+  Blob: class { constructor(p) { this.t = p.join(""); } },
+  URL: { createObjectURL() { return "blob:x"; }, revokeObjectURL() {} },
+  document: { getElementById: (id) => id === "pp-data" ? { textContent: dataJson } : noop(),
+              createElement: noop, body: noop() },
+  igv: { createBrowser() { return new Promise(() => {}); } },
+  location: { search: "" }, URLSearchParams, console, setTimeout,
+};
+ctx.window = ctx;
+require("vm").runInNewContext(scripts[scripts.length - 1], ctx);
+const hostile = [{ name: "Sample", value: 'S<b id="x">"' }, "<hr/>", { name: "Value", value: 0.5 }];
+process.stdout.write(JSON.stringify({
+  seg: ctx.ppPopup({ type: "seg" }, hostile),
+  wig: ctx.ppPopup({ type: "wig" }, [{ name: "a<i>", value: 1 }]) === undefined,
+  merged: ctx.ppPopup({ type: "merged" }, ["<div style=x>name</div>"]) === undefined,
+  annotation: ctx.ppPopup({ type: "annotation" }, [{ name: "Name", value: "<a href='x'>EGFR</a>" }]) === undefined,
+  empty: ctx.ppPopup({ type: "seg" }, []),
+}));
+"""
+
+
+def test_popup_escapes_segment_tracks_and_leaves_others_to_igv(tmp_path):
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    page = tmp_path / "page.html"
+    page.write_text(render_html(PlotInputs(sample_id="S001")), encoding="utf-8")
+    h = tmp_path / "popup.js"
+    h.write_text(POPUP_HARNESS)
+    out = json.loads(subprocess.run([node, str(h), str(page)], capture_output=True, text=True,
+                                    check=True).stdout)  # nosec B603
+    assert "<b" not in out["seg"] and "S&lt;b id=&quot;x&quot;&gt;&quot;" in out["seg"]
+    assert out["seg"].count("<hr>") == 1 and "<span>Value</span>" in out["seg"]
+    assert out["wig"] is True and out["merged"] is True   # igv.js's own popup (numbers, fixed names, its markup)
+    assert out["annotation"] is True          # RefSeq popups keep igv.js's own links/separators
+    assert out["empty"] is False
+
+
+@pytest.mark.parametrize("sid", ["../victim", "/tmp/abs", "a\\b", "..", ".", "", "a\0b"])
+def test_sample_id_must_be_a_plain_file_name(tmp_path, sid):
+    with pytest.raises(ValueError):
+        write_html(PlotInputs(sample_id=sid), tmp_path / "out")
+    assert not (tmp_path / "victim.igv.bars.html").exists()
+
+
+def test_cli_rejects_path_like_sample_id(tmp_path):
+    r = subprocess.run([
+        sys.executable, str(SCRIPT), "--sample", "../victim",
+        "--cnvkit_cnr", str(FIXTURES / "sample.cnr"), "--output_dir", str(tmp_path / "out"),
+    ], capture_output=True, text=True)  # nosec B603
+    assert r.returncode != 0 and "file name" in r.stderr
+    assert not (tmp_path / "victim.igv.bars.html").exists()
+
+
+def test_cli_accepts_leading_dash_sample_id_in_equals_form(tmp_path):
+    """src/code.sh passes --sample=<id>, so an ID starting with '-' is not taken for an option."""
+    r = subprocess.run([
+        sys.executable, str(SCRIPT), "--sample=-S001",
+        "--cnvkit_cnr", str(FIXTURES / "sample.cnr"), "--output_dir", str(tmp_path),
+    ], capture_output=True, text=True)  # nosec B603
+    assert r.returncode == 0, r.stderr
+    assert (tmp_path / "-S001.igv.bars.html").exists()
+    assert '"--sample=${sample_id}"' in (SCRIPT.parents[4] / "src" / "code.sh").read_text()
+
 
 
 def test_supplied_inputs_keep_their_empty_children(tmp_path):

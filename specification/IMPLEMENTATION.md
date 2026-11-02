@@ -1,5 +1,13 @@
 # IMPLEMENTATION — eggd_purple_plotter
 
+> **Historical (v1.0.0).** This document is the original v1.0.0 build plan and is kept as a
+> record. It describes loading igv.js from the igv.org CDN and holding track data in JavaScript
+> template literals. From v1.1.0, igv.js is inlined and hash-checked, per-sample data is in a
+> non-executable JSON block, and a Content-Security-Policy pins the scripts; see the main
+> README ("Security") and `specification/DESIGN.md`. Do not follow the CDN or template-literal
+> steps below for current work.
+
+
 ## 0. Prerequisites
 
 - Python 3.12+

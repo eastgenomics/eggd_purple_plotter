@@ -1,0 +1,382 @@
+// eggd_purple_plotter viewer code. Inlined unchanged into every generated HTML, so it is
+// byte-identical for every sample and can be pinned by hash in the page's
+// Content-Security-Policy. All per-sample values (track data, locus, file name) come from
+// the non-executable JSON block (script element type="application/json", id "pp-data"); nothing
+// sample-specific is ever written into this code.
+"use strict";
+const ppData = JSON.parse(document.getElementById("pp-data").textContent);
+
+// Status line. #pp-fallback is static text that stays only if this script never runs.
+// #pp-status is a live region that starts empty; updates are written from the next tick on, so
+// assistive technology has seen the empty region and announces each change (an early failure
+// is queued, not lost). Once the viewer is ready the line stays, visually hidden.
+let ppStatusLive = false, ppStatusNext = null;
+function ppStatusFlush() {
+  const el = document.getElementById("pp-status");
+  el.textContent = ppStatusNext[0];
+  el.classList.toggle("pp-sr-only", !!ppStatusNext[1]);
+  const fb = document.getElementById("pp-fallback");
+  if (fb) fb.remove();
+}
+function ppStatus(text, hide) {
+  ppStatusNext = [text, hide];
+  if (ppStatusLive) ppStatusFlush();
+}
+setTimeout(function () { ppStatusLive = true; ppStatusFlush(); }, 50);
+ppStatus("Loading viewer\u2026");
+
+const covLog2Bg          = ppData.cov_log2_bg;
+const barAmpBg           = ppData.bar_amp_bg;
+const barGainBg          = ppData.bar_gain_bg;
+const barLossBg          = ppData.bar_loss_bg;
+const barHodelBg         = ppData.bar_hodel_bg;
+const bafBg              = ppData.baf_bg;
+const bafMirBg           = ppData.baf_mir_bg;
+const bafBarAmpTopBg     = ppData.baf_bar_amp_top_bg;
+const bafBarAmpBotBg     = ppData.baf_bar_amp_bot_bg;
+const bafBarGainTopBg    = ppData.baf_bar_gain_top_bg;
+const bafBarGainBotBg    = ppData.baf_bar_gain_bot_bg;
+const bafBarLossTopBg    = ppData.baf_bar_loss_top_bg;
+const bafBarLossBotBg    = ppData.baf_bar_loss_bot_bg;
+const bafBarHodelTopBg   = ppData.baf_bar_hodel_top_bg;
+const bafBarHodelBotBg   = ppData.baf_bar_hodel_bot_bg;
+const cnvkitCnrBg        = ppData.cnvkit_cnr_bg;
+const cnvkitSnsBg        = ppData.cnvkit_sns_bg;
+const cnvkitGenemetricsBg = ppData.cnvkit_gm_bg;
+const segData            = ppData.seg_data;
+
+// Click popups. igv.js builds them as HTML from raw values, so a sample ID such as
+// "S<b>x</b>" in a SEG track would become markup (the CSP stops scripts, not markup).
+// Segment tracks are the only ones whose popups carry text from the data (the SEG sample
+// column), so for them every value is HTML-escaped here, in the same layout igv.js uses.
+// All other tracks keep igv.js's own popup. The embedded wig/merged tracks hold only numbers
+// and our fixed track names, plus igv.js's own markup (merged-track headers, &nbsp; padding)
+// that escaping would show as literal text. The RefSeq gene track is external annotation
+// (UCSC) with igv.js's own text and links.
+const PP_ESCAPED_POPUP_TYPES = new Set(["seg"]);
+function ppEsc(v) {
+  return String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                  .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function ppPopup(track, data) {
+  if (!track || !PP_ESCAPED_POPUP_TYPES.has(track.type)) return undefined;   // undefined: igv.js default popup
+  if (!Array.isArray(data) || data.length === 0) return false;           // false: no popup
+  return data.map(function (d) {
+    if (d === "<hr>" || d === "<hr/>") return "<hr>";
+    if (d && typeof d === "object" && d.name !== undefined) {
+      return '<div title="' + ppEsc(d.value) + '"><span>' + ppEsc(d.name) + "</span>&nbsp;&nbsp;&nbsp;" + ppEsc(d.value) + "</div>";
+    }
+    const text = d && typeof d === "object" ? (d.html !== undefined ? d.html : JSON.stringify(d)) : d;
+    return "<div>" + ppEsc(text) + "</div>";
+  }).join("");
+}
+
+// Which inputs were supplied (from purple_plotter.py, in the data block). A track is removed
+// only when its input was not supplied; that also avoids igv.js aborting createBrowser on an
+// empty SEG file. A track whose input was supplied but has no rows (e.g. no deletions, or a
+// genemetrics file with no genes) is kept, empty, and labelled "(no data)", so the two cases
+// can be told apart.
+const ppSupplied = ppData.supplied;
+const absentBlobs = new Set(), noDataBlobs = new Set();
+
+// True if the text has any data row. Only the first line can be a SEG header (the converters
+// write "SampleID\tChromosome\t..." first), so a sample really named "SampleID" still counts.
+function hasRows(txt) {
+  const body = txt.startsWith("SampleID\tChromosome\t") ? txt.slice(txt.indexOf("\n") + 1 || txt.length) : txt;
+  return /\S/.test(body);
+}
+
+function blob(txt, input) {
+  const url = URL.createObjectURL(new Blob([txt], { type: "text/plain" }));
+  if (!ppSupplied[input]) absentBlobs.add(url);
+  else if (!hasRows(txt)) noDataBlobs.add(url);
+  return url;
+}
+
+function pruneTracks(list) {
+  return list.map(function (t) {
+    const parts = t.tracks ? t.tracks : [t];
+    const kept = parts.filter(function (c) { return !absentBlobs.has(c.url); });
+    if (!kept.length) return null;                                       // input not supplied
+    const out = t.tracks ? Object.assign({}, t, { tracks: kept }) : Object.assign({}, t);
+    if (kept.every(function (c) { return noDataBlobs.has(c.url); })) {   // supplied, no rows
+      out.name = ((t.name || "").trim() || "Segments") + " (no data)";
+      if ((out.height || 0) < 25) out.height = 25;                       // room for the label
+    }
+    return out;
+  }).filter(Boolean);
+}
+
+// Start-up failure, whether igv.createBrowser rejects or throws before returning (e.g. if
+// igv.js itself did not load): record it for the renderer and show it; the viewer stays inert.
+function ppStartFailed(e) {
+  window.igvError = String(e);
+  console.error(e);
+  ppStatus("The viewer could not start: " + String(e));
+}
+
+try {
+igv.createBrowser(document.getElementById("igv-div"), {
+  genome:    "hg38",
+  locus:     new URLSearchParams(location.search).get("locus") || ppData.locus,
+  showRuler: true,
+  showCursorTrackingGuide: true,
+  tracks: pruneTracks([
+
+    // ── 1. Coverage scatter + CN log₂ bars ──────────────────────────────────
+    {
+      type: "merged", name: "Coverage + CN (log₂)", height: 200,
+      min: -2, max: 2, autoscale: false, visibilityWindow: -1, alpha: 0.6,
+      tracks: [
+        { type: "wig", format: "bedgraph", name: "CN amp bars", url: blob(barAmpBg, "purple"),
+           graphType: "bar", color: "#08306b", altColor: "#08306b",
+           min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", name: "CN gain bars", url: blob(barGainBg, "purple"),
+           graphType: "bar", color: "#93c4e0", altColor: "#93c4e0",
+           min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", name: "CN loss bars", url: blob(barLossBg, "purple"),
+           graphType: "bar", color: "#fca5a5", altColor: "#fca5a5",
+           min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", name: "CN homdel bars", url: blob(barHodelBg, "purple"),
+           graphType: "bar", color: "#8b0000", altColor: "#8b0000",
+           min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", name: "Coverage ratio (log\u2082)", url: blob(covLog2Bg, "purple"),
+           graphType: "points", color: "rgba(80,80,80,0.5)", pointSize: 6,
+           min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+      ],
+    },
+
+    // ── 2. PURPLE CNV segments (log₂ SEG) ───────────────────────────────────
+    {
+      name: " ", type: "seg", format: "seg",
+      url: blob(segData, "purple"), height: 10,
+      posColorScale: { low: 0.1, high: 1.5, lowColor: 'rgb(255,255,255)', highColor: 'rgb(8,48,107)' },
+      negColorScale: { low: -1.5, high: -0.1, lowColor: 'rgb(139,0,0)', highColor: 'rgb(255,255,255)' },
+    },
+
+    // ── 3. BAF scatter + fitted BAF bars ────────────────────────────────────
+    {
+      type: "merged", name: "BAF", height: 100,
+      min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, alpha: 0.6,
+      tracks: [
+        { type: "wig", format: "bedgraph", name: "Fitted BAF, amp (upper)", url: blob(bafBarAmpTopBg, "purple"),   graphType: "bar", color: "#08306b", altColor: "#08306b", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", name: "Fitted BAF, gain (upper)", url: blob(bafBarGainTopBg, "purple"),  graphType: "bar", color: "#93c4e0", altColor: "#93c4e0", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", name: "Fitted BAF, loss (upper)", url: blob(bafBarLossTopBg, "purple"),  graphType: "bar", color: "#fca5a5", altColor: "#fca5a5", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", name: "Fitted BAF, homdel (upper)", url: blob(bafBarHodelTopBg, "purple"), graphType: "bar", color: "#8b0000", altColor: "#8b0000", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", name: "Fitted BAF, amp (lower)", url: blob(bafBarAmpBotBg, "purple"),   graphType: "bar", color: "#08306b", altColor: "#08306b", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", name: "Fitted BAF, gain (lower)", url: blob(bafBarGainBotBg, "purple"),  graphType: "bar", color: "#93c4e0", altColor: "#93c4e0", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", name: "Fitted BAF, loss (lower)", url: blob(bafBarLossBotBg, "purple"),  graphType: "bar", color: "#fca5a5", altColor: "#fca5a5", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", name: "Fitted BAF, homdel (lower)", url: blob(bafBarHodelBotBg, "purple"), graphType: "bar", color: "#8b0000", altColor: "#8b0000", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", name: "BAF \u2212 0.5 (AMBER)", url: blob(bafBg, "purple"),            graphType: "points", color: "rgba(80,80,80,0.5)", pointSize: 6, min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", name: "0.5 \u2212 BAF (mirror)", url: blob(bafMirBg, "purple"),         graphType: "points", color: "rgba(80,80,80,0.5)", pointSize: 6, min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+      ],
+    },
+
+    // ── 4. PURPLE CNV segments (log₂ SEG) ───────────────────────────────────
+    {
+      name: " ", type: "seg", format: "seg",
+      url: blob(segData, "purple"), height: 10,
+      posColorScale: { low: 0.1, high: 1.5, lowColor: 'rgb(255,255,255)', highColor: 'rgb(8,48,107)' },
+      negColorScale: { low: -1.5, high: -0.1, lowColor: 'rgb(139,0,0)', highColor: 'rgb(255,255,255)' },
+    },
+
+    // ── 5. CNVkit log₂ scatter (.cnr per-target ratios) ─────────────────────
+    {
+      type: "merged", name: "CNVkit log₂", height: 150,
+      min: -2, max: 2, autoscale: false, visibilityWindow: -1,
+      tracks: [
+        { type: "wig", format: "bedgraph", name: "CNVkit log\u2082 ratio", url: blob(cnvkitCnrBg, "cnvkit_cnr"), graphType: "points", color: "#756bb1", pointSize: 10, min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+      ],
+    },
+
+    // ── 6. CNVkit called segments (.call.cns) ────────────────────────────────
+    {
+      name: "CNVkit segments", type: "seg", format: "seg",
+      url: blob(cnvkitSnsBg, "cnvkit_call_cns"), height: 50,
+      posColorScale: { low: 0.1, high: 1.5, lowColor: 'rgb(255,255,255)', highColor: 'rgb(8,48,107)' },
+      negColorScale: { low: -1.5, high: -0.1, lowColor: 'rgb(139,0,0)', highColor: 'rgb(255,255,255)' },
+    },
+
+    // ── 7. CNVkit gene metrics (.genemetrics.csv) ────────────────────────────
+    {
+      type: "merged", name: "CNVkit genemetrics", height: 80,
+      min: -2, max: 2, autoscale: false, visibilityWindow: -1,
+      tracks: [
+        { type: "wig", format: "bedgraph", name: "CNVkit gene log\u2082", url: blob(cnvkitGenemetricsBg, "cnvkit_genemetrics"), graphType: "bar", color: "#08306b", altColor: "#8b0000", min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+      ],
+    },
+
+  ]),
+}).then(function (b) {
+  b.on("trackclick", ppPopup);
+  // igv.js's toolbar "Save Image" menu (Save as SVG / Save as PNG) calls these two methods;
+  // replace them on this browser so the files carry the sample/QC banner and a sample-based
+  // name instead of a plain igvjs.svg / igvjs.png. The per-track right-click "Save Image"
+  // items are igv.js's own single-track export and are left unchanged.
+  b.saveSVGtoFile = ppSaveSvg;
+  b.savePNGtoFile = ppSavePng;
+  window.igvBrowser = b;
+  window.igvReady   = true;
+  // igv.js draws its toolbar (including Save Image) before createBrowser resolves. The viewer
+  // starts inert (no clicks or keyboard focus, including inside igv's shadow root) and
+  // transparent, keeping its layout, until the overrides above are installed, so no
+  // unlabelled export is possible. (visibility:hidden is not enough: igv's own styles can
+  // make parts of the toolbar visible again.)
+  const igvDiv = document.getElementById("igv-div");
+  igvDiv.inert = false;
+  igvDiv.style.opacity = "";
+  ppStatus("Viewer loaded.", true);
+}).catch(ppStartFailed);
+} catch (e) {
+  ppStartFailed(e);
+}
+
+// ── Image export (current view) ─────────────────────────────────────────────
+// Used by igv.js's "Save Image" menu (via the overrides above) and, through
+// window.ppExport, by the headless renderer (render_image.py), so the downloaded
+// files and the pipeline output come from the same code path.
+const ppSampleFile = ppData.sample_file;
+
+// Exported images carry the sample ID, purity/ploidy/status and MSI banner from
+// the page header, so an image is never separated from the sample it shows.
+// Break txt into lines whose rendered width (measured with the same font the SVG
+// text uses) fits in `maxPx`, at spaces where possible, hard-splitting any single
+// token that is wider than a line, so long sample IDs are never clipped.
+function ppWrap(txt, font, maxPx) {
+  const ctx = document.createElement("canvas").getContext("2d");
+  ctx.font = font;
+  const fits = function (t) { return ctx.measureText(t).width * 1.05 <= maxPx; };   // 5% safety for font fallback
+  const lines = []; let cur = "";
+  txt.split(" ").forEach(function (word) {
+    let chars = Array.from(word);        // code points, so a surrogate pair is never split
+    while (!fits(chars.join("")) && chars.length > 1) {
+      if (cur) { lines.push(cur); cur = ""; }
+      let n = chars.length - 1;
+      while (n > 1 && !fits(chars.slice(0, n).join(""))) n--;
+      lines.push(chars.slice(0, n).join("")); chars = chars.slice(n);
+    }
+    word = chars.join("");
+    if (cur && !fits(cur + " " + word)) { lines.push(cur); cur = word; }
+    else cur = cur ? cur + " " + word : word;
+  });
+  if (cur) lines.push(cur);
+  return lines.length ? lines : [""];
+}
+
+function ppSvg() {
+  if (!window.igvBrowser) throw new Error("IGV browser is not ready");
+  const NS = "http://www.w3.org/2000/svg";
+  const doc  = new DOMParser().parseFromString(window.igvBrowser.toSVG(), "image/svg+xml");
+  const root = doc.documentElement;
+  const [w, h] = ppSvgSize(root);
+  const clean = function (sel) { return document.querySelector(sel).textContent.replace(/\s+/g, " ").trim(); };
+  // The IGV SVG has ruler coordinates but not its navigation bar, so state the genome and
+  // locus explicitly: an image must identify what it shows once detached from its filename.
+  const loci = window.igvBrowser.currentLoci && window.igvBrowser.currentLoci();
+  // igv reports the whole genome as "all:1-<genome length>"; label it only when the range really is
+  // the whole genome, so a partial "all:<a>-<b>" view keeps its coordinates.
+  const glen = window.igvBrowser.genome && window.igvBrowser.genome.getGenomeLength && window.igvBrowser.genome.getGenomeLength();
+  const locusText = [].concat(loci || "all").map(function (l) {
+    const m = /^all(?::(\d+)-(\d+))?$/.exec(l);
+    return m && (!m[1] || (Number(m[1]) <= 1 && glen && Math.abs(Number(m[2]) - glen) <= 1)) ? "all (whole genome)" : l;
+  }).join(" | ");
+  const where = "Genome hg38 · Locus: " + locusText;
+  const FONT = "Arial, sans-serif", maxPx = w - 24;
+  const title = ppWrap(clean("#hdr .ttl"),  "bold 14px " + FONT, maxPx);
+  const meta  = ppWrap(clean("#hdr .meta"), "12px " + FONT,      maxPx)
+                  .concat(ppWrap(where,     "12px " + FONT,      maxPx));
+  const BANNER = 8 + title.length * 18 + meta.length * 16 + 4;
+
+  const body = doc.createElementNS(NS, "g");
+  body.setAttribute("transform", "translate(0," + BANNER + ")");
+  while (root.firstChild) body.appendChild(root.firstChild);
+  const bg = doc.createElementNS(NS, "rect");
+  [["x", 0], ["y", 0], ["width", w], ["height", BANNER], ["fill", "#1a2638"]]
+    .forEach(function (kv) { bg.setAttribute(kv[0], kv[1]); });
+  root.appendChild(bg);
+  let y = 8;
+  function add(lines, size, step, fill, weight) {
+    lines.forEach(function (txt) {
+      y += step;
+      const t = doc.createElementNS(NS, "text");
+      [["x", 12], ["y", y - 4], ["font-family", FONT], ["font-size", size],
+       ["font-weight", weight], ["fill", fill]].forEach(function (kv) { t.setAttribute(kv[0], kv[1]); });
+      t.textContent = txt;
+      root.appendChild(t);
+    });
+  }
+  add(title, 14, 18, "#e8edf3", "bold");
+  add(meta,  12, 16, "#9aafc4", "normal");
+  root.appendChild(body);
+  root.setAttribute("height", h + BANNER);
+  root.setAttribute("viewBox", "0 0 " + w + " " + (h + BANNER));
+  return new XMLSerializer().serializeToString(root);
+}
+
+function ppSvgSize(root) {
+  const vb = (root.getAttribute("viewBox") || "").split(/[\s,]+/).map(Number);
+  const w = parseFloat(root.getAttribute("width"))  || vb[2];
+  const h = parseFloat(root.getAttribute("height")) || vb[3];
+  if (!(w > 0 && h > 0)) throw new Error("SVG has no usable size");
+  return [w, h];
+}
+
+function ppPng(scale) {
+  scale = scale || 2;
+  const svgText = ppSvg();
+  const [w, h] = ppSvgSize(new DOMParser().parseFromString(svgText, "image/svg+xml").documentElement);
+  const url = URL.createObjectURL(new Blob([svgText], { type: "image/svg+xml;charset=utf-8" }));
+  return new Promise(function (resolve, reject) {
+    const img = new Image();
+    img.onload = function () {
+      const c = document.createElement("canvas");
+      c.width = Math.round(w * scale); c.height = Math.round(h * scale);
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      c.toBlob(function (blob) { blob ? resolve(blob) : reject(new Error("PNG encode failed")); }, "image/png");
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); reject(new Error("SVG could not be rasterised")); };
+    img.src = url;
+  });
+}
+
+function ppDownload(blob, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+}
+
+function ppLocusTag() {
+  const l = window.igvBrowser && window.igvBrowser.currentLoci && window.igvBrowser.currentLoci();
+  const t = String(Array.isArray(l) ? l[0] : (l || "view")).replace(/[^A-Za-z0-9._-]+/g, "_");
+  return t || "view";
+}
+
+window.ppExport = {
+  svg: ppSvg,
+  png: function (scale) {
+    return ppPng(scale).then(function (blob) {
+      return new Promise(function (resolve, reject) {
+        const r = new FileReader();
+        r.onload  = function () { resolve(String(r.result).split(",")[1]); };
+        r.onerror = function () { reject(r.error); };
+        r.readAsDataURL(blob);
+      });
+    });
+  },
+};
+
+function ppSaveSvg() {
+  try {
+    ppDownload(new Blob([ppSvg()], { type: "image/svg+xml" }), ppSampleFile + "." + ppLocusTag() + ".svg");
+  } catch (e) { alert("Could not export SVG: " + e.message); }
+}
+
+function ppSavePng() {
+  ppPng(2).then(function (blob) { ppDownload(blob, ppSampleFile + "." + ppLocusTag() + ".png"); })
+          .catch(function (e) { alert("Could not export PNG: " + e.message); });
+}

@@ -109,7 +109,8 @@ no gene-annotation track.
 
 On DNAnexus, set `genome_image=true` to also get `{sample_id}.genome.png` and
 `.svg` outputs. Playwright and Chromium come from the `pp_headless_chromium` asset
-(source in `asset/`), listed under `runSpec.assetDepends` in `dxapp.json`. The asset
+(source in `asset/`), pinned by record ID under `runSpec.assetDepends` in `dxapp.json`,
+so a build always uses that exact bundle. The asset
 is always downloaded to the worker, even when `genome_image` is false, because
 `assetDepends` cannot be conditional.
 
@@ -124,6 +125,8 @@ dx build_asset asset -d <project>:/app_assets/pp_headless_chromium/pp_headless_c
 
 Current record: `001_Reference:/app_assets/pp_headless_chromium/pp_headless_chromium_v1.0.0/pp_headless_chromium`
 (`record-JFV8Y9Q42qG5FFbkGjQq23Kj`). Build takes ~5 min; ~440 MB installed.
+After rebuilding, put the new record ID in `dxapp.json` (`"id"`, with `name`/`version` kept for
+readability).
 
 ### Run on DNAnexus
 

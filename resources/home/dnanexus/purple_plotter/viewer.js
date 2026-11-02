@@ -47,17 +47,20 @@ const segData            = ppData.seg_data;
 
 // Click popups. igv.js builds them as HTML from raw values, so a sample ID such as
 // "S<b>x</b>" in a SEG track would become markup (the CSP stops scripts, not markup).
-// For the tracks built from this file's embedded data (seg, wig, merged) every value is
-// HTML-escaped here, in the same layout igv.js uses. Other tracks (the genome's RefSeq
-// annotation, whose popups contain igv.js's own links and separators) keep igv.js's popup.
-const PP_DATA_TRACK_TYPES = new Set(["seg", "wig", "merged"]);
+// Segment tracks are the only ones whose popups carry text from the data (the SEG sample
+// column), so for them every value is HTML-escaped here, in the same layout igv.js uses.
+// All other tracks keep igv.js's own popup. The embedded wig/merged tracks hold only numbers
+// and our fixed track names, plus igv.js's own markup (merged-track headers, &nbsp; padding)
+// that escaping would show as literal text. The RefSeq gene track is external annotation
+// (UCSC) with igv.js's own text and links.
+const PP_ESCAPED_POPUP_TYPES = new Set(["seg"]);
 function ppEsc(v) {
   return String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
                   .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 function ppPopup(track, data) {
-  if (!track || !PP_DATA_TRACK_TYPES.has(track.type)) return undefined;   // undefined: igv.js default popup
+  if (!track || !PP_ESCAPED_POPUP_TYPES.has(track.type)) return undefined;   // undefined: igv.js default popup
   if (!Array.isArray(data) || data.length === 0) return false;           // false: no popup
   return data.map(function (d) {
     if (d === "<hr>" || d === "<hr/>") return "<hr>";
@@ -126,19 +129,19 @@ igv.createBrowser(document.getElementById("igv-div"), {
       type: "merged", name: "Coverage + CN (log₂)", height: 200,
       min: -2, max: 2, autoscale: false, visibilityWindow: -1, alpha: 0.6,
       tracks: [
-        { type: "wig", format: "bedgraph", url: blob(barAmpBg, "purple"),
+        { type: "wig", format: "bedgraph", name: "CN amp bars", url: blob(barAmpBg, "purple"),
            graphType: "bar", color: "#08306b", altColor: "#08306b",
            min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
-        { type: "wig", format: "bedgraph", url: blob(barGainBg, "purple"),
+        { type: "wig", format: "bedgraph", name: "CN gain bars", url: blob(barGainBg, "purple"),
            graphType: "bar", color: "#93c4e0", altColor: "#93c4e0",
            min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
-        { type: "wig", format: "bedgraph", url: blob(barLossBg, "purple"),
+        { type: "wig", format: "bedgraph", name: "CN loss bars", url: blob(barLossBg, "purple"),
            graphType: "bar", color: "#fca5a5", altColor: "#fca5a5",
            min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
-        { type: "wig", format: "bedgraph", url: blob(barHodelBg, "purple"),
+        { type: "wig", format: "bedgraph", name: "CN homdel bars", url: blob(barHodelBg, "purple"),
            graphType: "bar", color: "#8b0000", altColor: "#8b0000",
            min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
-        { type: "wig", format: "bedgraph", url: blob(covLog2Bg, "purple"),
+        { type: "wig", format: "bedgraph", name: "Coverage ratio (log\u2082)", url: blob(covLog2Bg, "purple"),
            graphType: "points", color: "rgba(80,80,80,0.5)", pointSize: 6,
            min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
       ],
@@ -157,16 +160,16 @@ igv.createBrowser(document.getElementById("igv-div"), {
       type: "merged", name: "BAF", height: 100,
       min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, alpha: 0.6,
       tracks: [
-        { type: "wig", format: "bedgraph", url: blob(bafBarAmpTopBg, "purple"),   graphType: "bar", color: "#08306b", altColor: "#08306b", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
-        { type: "wig", format: "bedgraph", url: blob(bafBarGainTopBg, "purple"),  graphType: "bar", color: "#93c4e0", altColor: "#93c4e0", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
-        { type: "wig", format: "bedgraph", url: blob(bafBarLossTopBg, "purple"),  graphType: "bar", color: "#fca5a5", altColor: "#fca5a5", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
-        { type: "wig", format: "bedgraph", url: blob(bafBarHodelTopBg, "purple"), graphType: "bar", color: "#8b0000", altColor: "#8b0000", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
-        { type: "wig", format: "bedgraph", url: blob(bafBarAmpBotBg, "purple"),   graphType: "bar", color: "#08306b", altColor: "#08306b", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
-        { type: "wig", format: "bedgraph", url: blob(bafBarGainBotBg, "purple"),  graphType: "bar", color: "#93c4e0", altColor: "#93c4e0", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
-        { type: "wig", format: "bedgraph", url: blob(bafBarLossBotBg, "purple"),  graphType: "bar", color: "#fca5a5", altColor: "#fca5a5", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
-        { type: "wig", format: "bedgraph", url: blob(bafBarHodelBotBg, "purple"), graphType: "bar", color: "#8b0000", altColor: "#8b0000", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
-        { type: "wig", format: "bedgraph", url: blob(bafBg, "purple"),            graphType: "points", color: "rgba(80,80,80,0.5)", pointSize: 6, min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
-        { type: "wig", format: "bedgraph", url: blob(bafMirBg, "purple"),         graphType: "points", color: "rgba(80,80,80,0.5)", pointSize: 6, min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", name: "Fitted BAF, amp (upper)", url: blob(bafBarAmpTopBg, "purple"),   graphType: "bar", color: "#08306b", altColor: "#08306b", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", name: "Fitted BAF, gain (upper)", url: blob(bafBarGainTopBg, "purple"),  graphType: "bar", color: "#93c4e0", altColor: "#93c4e0", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", name: "Fitted BAF, loss (upper)", url: blob(bafBarLossTopBg, "purple"),  graphType: "bar", color: "#fca5a5", altColor: "#fca5a5", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", name: "Fitted BAF, homdel (upper)", url: blob(bafBarHodelTopBg, "purple"), graphType: "bar", color: "#8b0000", altColor: "#8b0000", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", name: "Fitted BAF, amp (lower)", url: blob(bafBarAmpBotBg, "purple"),   graphType: "bar", color: "#08306b", altColor: "#08306b", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", name: "Fitted BAF, gain (lower)", url: blob(bafBarGainBotBg, "purple"),  graphType: "bar", color: "#93c4e0", altColor: "#93c4e0", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", name: "Fitted BAF, loss (lower)", url: blob(bafBarLossBotBg, "purple"),  graphType: "bar", color: "#fca5a5", altColor: "#fca5a5", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", name: "Fitted BAF, homdel (lower)", url: blob(bafBarHodelBotBg, "purple"), graphType: "bar", color: "#8b0000", altColor: "#8b0000", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", name: "BAF \u2212 0.5 (AMBER)", url: blob(bafBg, "purple"),            graphType: "points", color: "rgba(80,80,80,0.5)", pointSize: 6, min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", name: "0.5 \u2212 BAF (mirror)", url: blob(bafMirBg, "purple"),         graphType: "points", color: "rgba(80,80,80,0.5)", pointSize: 6, min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
       ],
     },
 
@@ -183,7 +186,7 @@ igv.createBrowser(document.getElementById("igv-div"), {
       type: "merged", name: "CNVkit log₂", height: 150,
       min: -2, max: 2, autoscale: false, visibilityWindow: -1,
       tracks: [
-        { type: "wig", format: "bedgraph", url: blob(cnvkitCnrBg, "cnvkit_cnr"), graphType: "points", color: "#756bb1", pointSize: 10, min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", name: "CNVkit log\u2082 ratio", url: blob(cnvkitCnrBg, "cnvkit_cnr"), graphType: "points", color: "#756bb1", pointSize: 10, min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
       ],
     },
 
@@ -200,7 +203,7 @@ igv.createBrowser(document.getElementById("igv-div"), {
       type: "merged", name: "CNVkit genemetrics", height: 80,
       min: -2, max: 2, autoscale: false, visibilityWindow: -1,
       tracks: [
-        { type: "wig", format: "bedgraph", url: blob(cnvkitGenemetricsBg, "cnvkit_genemetrics"), graphType: "bar", color: "#08306b", altColor: "#8b0000", min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", name: "CNVkit gene log\u2082", url: blob(cnvkitGenemetricsBg, "cnvkit_genemetrics"), graphType: "bar", color: "#08306b", altColor: "#8b0000", min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
       ],
     },
 

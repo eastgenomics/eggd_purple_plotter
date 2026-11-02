@@ -200,9 +200,12 @@ Every generated viewer has the same structure:
 4. The viewer code, inlined from `resources/home/dnanexus/purple_plotter/viewer.js`.
 
 Items 3 and 4 are **byte-identical for every sample**. igv.js builds click popups as HTML from
-raw values, so for the tracks built from the embedded data (seg, wig, merged) `viewer.js`
-supplies its own popup content with every value HTML-escaped (the CSP stops scripts, not
-injected markup); the RefSeq annotation keeps igv.js's own popup; the per-sample HTML-context values
+raw values, so for segment tracks, whose popups show the sample ID from the SEG data,
+`viewer.js` supplies its own popup content with every value HTML-escaped (the CSP stops
+scripts, not injected markup). The embedded coverage, CN, BAF and CNVkit wig/merged tracks keep
+igv.js's own popup, which holds only numbers, our fixed track names and igv.js's own markup. The
+RefSeq gene track is external annotation from UCSC, rendered by igv.js's own popup with its text
+and links, as in any igv.js viewer; the per-sample HTML-context values
 (`<title>`, header) are HTML-escaped. Tabs, CR and LF in the sample ID are replaced with `_`
 in the SEG track data, where the ID is a tab-delimited column. The CSP lets only those two scripts run, by hash:
 
@@ -229,9 +232,16 @@ object-src 'none'
 
 These directives were established in a real browser by recording `securitypolicyviolation`
 events while loading the whole genome, a chromosome, a 2 kb and a 100 bp window (sequence
-from UCSC), a gene search (`EGFR`), the RefSeq track, and both Save Image menu items, from `file://` and
-`http://localhost`: no violations. `tests/test_csp.py` repeats this offline in CI, and online
-with `PP_LIVE_NETWORK=1`.
+from UCSC), a gene search (`EGFR`), the RefSeq track, and both Save Image menu items, from
+`file://` and `http://localhost`: no violations. `tests/test_csp.py` keeps two of these checks,
+both opening the viewer as a `file://` URL:
+
+- `test_csp_offline` (runs in CI): genome files served from `assets/`; whole genome, a
+  chromosome and a 2 kb window, and both Save Image menu items. No gene search, sequence or
+  RefSeq track (those need the network).
+- `test_csp_live` (only with `PP_LIVE_NETWORK=1`): real igv.org/UCSC; adds the `EGFR` gene
+  search, a 100 bp window with UCSC sequence and the RefSeq track, and checks the 2bit and
+  RefSeq requests were made.
 
 If igv.org's genome list is unreachable, igv.js would fall back to `raw.githubusercontent.com`,
 and for the sequence to UCSC's AWS mirror. The CSP blocks both, so the viewer then fails to
@@ -259,7 +269,7 @@ prints the two `sha256-…` values. For v1.1.0:
 | Script | Hash |
 |---|---|
 | igv.js 3.8.3 | `sha256-rPTumc3JG+iEIDkw25w5W8hiZ1UpM7SD2gtgnBbqBao=` |
-| viewer.js | `sha256-83SC/4ark48iydghFAHBeMTVa/OzXPJWU68kjgU4VfQ=` |
+| viewer.js | `sha256-wnmjHM4hwBfbWKi8HygdXHo53W2qtoo98Q6QaN62tSM=` |
 
 Any change to `viewer.js` or `igv.min.js` changes these; record the new values with each release.
 

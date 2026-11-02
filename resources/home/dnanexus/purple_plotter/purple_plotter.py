@@ -303,10 +303,6 @@ body {{ font-family: -apple-system, Arial, sans-serif; background: #f0f2f5; }}
         display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }}
 #hdr .ttl  {{ font-size: 15px; font-weight: 600; }}
 #hdr .meta {{ font-size: 12px; color: #9aafc4; }}
-#hdr .btns {{ margin-left: auto; display: flex; gap: 8px; }}
-#hdr button {{ font: inherit; font-size: 12px; color: #e8edf3; background: #2c3e57;
-               border: 1px solid #4a617f; border-radius: 3px; padding: 3px 10px; cursor: pointer; }}
-#hdr button:hover {{ background: #3a516f; }}
 #igv-div {{ background: white; }}
 #leg {{ background: #fff; border-top: 1px solid #dde; padding: 7px 18px;
         display: flex; flex-wrap: wrap; gap: 18px; align-items: center;
@@ -323,10 +319,6 @@ body {{ font-family: -apple-system, Arial, sans-serif; background: #f0f2f5; }}
   <span class="meta">
     Purity {purity} &nbsp;·&nbsp; Ploidy {ploidy} &nbsp;·&nbsp; {status}
     &nbsp;·&nbsp; MSI {msi_score} &nbsp;·&nbsp; {msi_status}
-  </span>
-  <span class="btns">
-    <button type="button" id="btn-svg" title="Download the current view as SVG">Save SVG</button>
-    <button type="button" id="btn-png" title="Download the current view as PNG">Save PNG</button>
   </span>
 </div>
 <div id="igv-div"></div>

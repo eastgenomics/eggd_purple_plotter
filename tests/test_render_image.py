@@ -16,6 +16,7 @@ PKG = Path(__file__).parent.parent / "resources/home/dnanexus/purple_plotter"
 sys.path.insert(0, str(PKG))
 
 import render_image
+from igv_ui import save_via_igv_menu
 from purple_plotter import PlotInputs, QCData, MSIData, load_cnvkit_data, render_html, write_html
 
 FIXTURES = Path(__file__).parent / "test_data"
@@ -155,8 +156,9 @@ def test_banner_states_genome_and_locus(tmp_path_factory):
     assert "whole genome" not in where and where.startswith("all:")      # partial 'all' view keeps its range
 
 
-def test_cnvkit_only_viewer_initialises_and_png_button_downloads(viewer):
-    """Empty PURPLE tracks are pruned (igv.js aborts on empty SEG), and the Save PNG button works."""
+def test_cnvkit_only_viewer_initialises_and_igv_save_menu_downloads(viewer):
+    """Empty PURPLE tracks are pruned (igv.js aborts on empty SEG), and igv.js's own Save Image menu
+    saves the bannered export under a sample-based name (not igv's plain igvjs.svg/png)."""
     exe, html, out = viewer
     from playwright.sync_api import sync_playwright
 
@@ -176,14 +178,13 @@ def test_cnvkit_only_viewer_initialises_and_png_button_downloads(viewer):
             page.goto(html.resolve().as_uri())
             page.wait_for_function("() => window.igvReady === true || !!window.igvError", timeout=60000)   # function form: a string predicate is eval()ed, which the page CSP blocks
             assert page.evaluate("window.igvError || null") is None
-            with page.expect_download() as dl_png:
-                page.click("#btn-png")
-            png_path = Path(dl_png.value.path())
-            assert dl_png.value.suggested_filename.startswith("IMG_TEST.") and dl_png.value.suggested_filename.endswith(".png")
-            with page.expect_download() as dl_svg:
-                page.click("#btn-svg")
-            assert dl_svg.value.suggested_filename.endswith(".svg")
-            assert png_path.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+            dl_png = save_via_igv_menu(page, "PNG")
+            assert dl_png.suggested_filename.startswith("IMG_TEST.") and dl_png.suggested_filename.endswith(".png")
+            assert Path(dl_png.path()).read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+            dl_svg = save_via_igv_menu(page, "SVG")
+            assert dl_svg.suggested_filename.startswith("IMG_TEST.") and dl_svg.suggested_filename.endswith(".svg")
+            svg = Path(dl_svg.path()).read_text(encoding="utf-8")
+            assert "IMG_TEST" in svg and "Purity 79%" in svg and "Genome hg38" in svg   # banner present
         finally:
             b.close()
 

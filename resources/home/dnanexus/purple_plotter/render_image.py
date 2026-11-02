@@ -4,7 +4,7 @@
 Loads the generated ``{sample}.igv.bars.html`` in headless Chromium (Playwright),
 switches to the whole-genome view (locus ``all``) and calls the viewer's own
 ``window.ppExport`` functions, so the files are identical to what the
-"Save SVG" / "Save PNG" buttons produce.
+igv.js "Save Image" menu produces in the viewer.
 
 No network access is needed or used. igv.js is embedded in the HTML itself; the
 hg38 genome-definition files the viewer requests are served from ``assets/``;

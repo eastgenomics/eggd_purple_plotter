@@ -163,6 +163,12 @@ igv.createBrowser(document.getElementById("igv-div"), {
   ]),
 }).then(function (b) {
   b.on("trackclick", ppPopup);
+  // igv.js's toolbar "Save Image" menu (Save as SVG / Save as PNG) calls these two methods;
+  // replace them on this browser so the files carry the sample/QC banner and a sample-based
+  // name instead of a plain igvjs.svg / igvjs.png. The per-track right-click "Save Image"
+  // items are igv.js's own single-track export and are left unchanged.
+  b.saveSVGtoFile = ppSaveSvg;
+  b.savePNGtoFile = ppSavePng;
   window.igvBrowser = b;
   window.igvReady   = true;
 }).catch(function (e) {
@@ -171,8 +177,9 @@ igv.createBrowser(document.getElementById("igv-div"), {
 });
 
 // ── Image export (current view) ─────────────────────────────────────────────
-// ppExport is also called by the headless renderer (render_image.py), so the
-// downloaded files and the pipeline output come from the same code path.
+// Used by igv.js's "Save Image" menu (via the overrides above) and, through
+// window.ppExport, by the headless renderer (render_image.py), so the downloaded
+// files and the pipeline output come from the same code path.
 const ppSampleFile = ppData.sample_file;
 
 // Exported images carry the sample ID, purity/ploidy/status and MSI banner from
@@ -307,12 +314,13 @@ window.ppExport = {
   },
 };
 
-document.getElementById("btn-svg").addEventListener("click", function () {
+function ppSaveSvg() {
   try {
     ppDownload(new Blob([ppSvg()], { type: "image/svg+xml" }), ppSampleFile + "." + ppLocusTag() + ".svg");
   } catch (e) { alert("Could not export SVG: " + e.message); }
-});
-document.getElementById("btn-png").addEventListener("click", function () {
+}
+
+function ppSavePng() {
   ppPng(2).then(function (blob) { ppDownload(blob, ppSampleFile + "." + ppLocusTag() + ".png"); })
           .catch(function (e) { alert("Could not export PNG: " + e.message); });
-});
+}

@@ -322,7 +322,7 @@ body {{ font-family: -apple-system, Arial, sans-serif; background: #f0f2f5; }}
     &nbsp;·&nbsp; MSI {msi_score} &nbsp;·&nbsp; {msi_status}
   </span>
 </div>
-<div id="pp-status">Loading viewer&#x2026;</div>
+<div id="pp-status" role="status">Loading viewer&#x2026;</div>
 <div id="igv-div" inert style="opacity: 0"></div>
 <div id="leg">
   <strong>Tracks:</strong>

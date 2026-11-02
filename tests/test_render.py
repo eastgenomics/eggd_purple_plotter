@@ -296,6 +296,10 @@ def test_supplied_cnvkit_file_that_does_not_exist_is_an_error(tmp_path):
     ["--cnvkit_cnr", str(FIXTURES / "sample.cnr"), "--cnvkit_call_cns", ""],     # optional ones
     ["--cnvkit_cnr", str(FIXTURES / "sample.cnr"), "--cnvkit_genemetrics", ""],
     ["--purple_tar", ""],
+    ["--cnvkit_cnr", str(FIXTURES / "sample.cnr"), "--qc_report", ""],
+    ["--cnvkit_cnr", str(FIXTURES / "sample.cnr"), "--qc_report", "/nonexistent/qc.tsv"],
+    ["--cnvkit_cnr", str(FIXTURES / "sample.cnr"), "--msi_report", ""],
+    ["--cnvkit_cnr", str(FIXTURES / "sample.cnr"), "--msi_report", "/nonexistent/msi.tsv"],
 ])
 def test_empty_file_argument_is_an_error_not_omitted(tmp_path, args):
     r = subprocess.run([sys.executable, str(SCRIPT), "--sample", "E", *args, "--output_dir", str(tmp_path)],

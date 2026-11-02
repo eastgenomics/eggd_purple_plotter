@@ -27,17 +27,19 @@ All data-conversion and HTML-generation logic lives in a pure Python module
 
 ## Status of this document set
 
-These documents are the **complete design and build specification**. A fresh
-agent session (or a human developer) should be able to open this directory, read
-the files in order, and build a working, tested app without needing the original
-conversation.
+These documents were written as the design and build specification for v1.0.0.
+DESIGN.md and REFERENCE.md are kept current. IMPLEMENTATION.md and build-prompt.md are
+**historical v1.0.0 build instructions** (CDN-loaded igv.js, data in JavaScript template
+literals) and must not be followed for current work: from v1.1.0, igv.js is inlined and
+hash-checked, per-sample data is in a non-executable JSON block, and a Content-Security-Policy
+pins the scripts. For the current code, read the main README ("Security") and the source.
 
 Read in this order:
 
 1. **README.md** (this file) — orientation and quick start
 2. **DESIGN.md** — architecture, module responsibilities, data model, error strategy, testing strategy
-3. **IMPLEMENTATION.md** — milestone-by-milestone TDD build plan with code sketches
-4. **REFERENCE.md** — input/output file formats, igv.js track config, env vars, external dependencies, glossary
+3. **REFERENCE.md** — input/output file formats, igv.js track config, env vars, external dependencies, glossary
+4. **IMPLEMENTATION.md** — *historical (v1.0.0)* milestone-by-milestone build plan
 
 ## Project layout (target)
 

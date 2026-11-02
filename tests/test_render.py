@@ -153,8 +153,9 @@ const ctx = {
 };
 ctx.window = ctx;
 require("vm").runInNewContext(scripts.join("\n"), ctx);
-const flat = (t) => (t.tracks || [t]).map(c => ({ empty: !texts[c.url].trim() }));
-const nonempty = Object.values(texts).filter(t => t.trim()).length;
+const rows = (t) => t.split("\n").some(l => l.trim() && !l.startsWith("SampleID\t"));
+const flat = (t) => (t.tracks || [t]).map(c => ({ empty: !rows(texts[c.url]) }));
+const nonempty = Object.values(texts).filter(rows).length;
 process.stdout.write(JSON.stringify({
   nonempty,
   tracks: cfg.tracks.map(t => ({ name: t.name, children: flat(t) })),
@@ -165,8 +166,8 @@ process.stdout.write(JSON.stringify({
 def _tracks_for(tmp_path, **kw):
     """Render, run the page script under node with igv stubbed.
 
-    Returns [{name, children:[{empty}]}]. Also asserts every non-empty data blob
-    ends up in exactly one surviving track/child (nothing populated is dropped).
+    Returns [{name, children:[{empty}]}] ("empty" = no data rows). Also asserts every data blob
+    with rows ends up in exactly one surviving track/child (nothing populated is dropped).
     """
     node = shutil.which("node")
     if node is None:
@@ -176,8 +177,8 @@ def _tracks_for(tmp_path, **kw):
     harness.write_text(HARNESS)
     res = subprocess.run([node, str(harness), str(out)], capture_output=True, text=True, check=True)  # nosec B603
     parsed = json.loads(res.stdout)
-    kept = sum(len(t["children"]) for t in parsed["tracks"])
-    assert kept == parsed["nonempty"], f"{kept} tracks kept but {parsed['nonempty']} blobs have data"
+    kept = sum(1 for t in parsed["tracks"] for c in t["children"] if not c["empty"])
+    assert kept == parsed["nonempty"], f"{kept} populated tracks kept but {parsed['nonempty']} blobs have data"
     return parsed["tracks"]
 
 
@@ -189,10 +190,12 @@ def _purple(tmp_path):
     return load_purple_data(tar)
 
 
-def _assert_no_empty_tracks(tracks):
+def _assert_tracks_have_data(tracks):
+    """Every surviving track has data, or is labelled "(no data)" (its input was supplied)."""
     for t in tracks:
-        assert t["children"], f"track {t['name']!r} has no data children"
-        assert not any(c["empty"] for c in t["children"]), f"track {t['name']!r} still has an empty-data track"
+        assert t["children"], f"track {t['name']!r} has no children"
+        if all(c["empty"] for c in t["children"]):
+            assert t["name"].endswith("(no data)"), f"empty track {t['name']!r} is not labelled"
 
 
 def test_no_inputs_yields_no_tracks(tmp_path):
@@ -202,14 +205,14 @@ def test_no_inputs_yields_no_tracks(tmp_path):
 def test_cnvkit_only_drops_purple_tracks(tmp_path):
     tracks = _tracks_for(tmp_path, cnvkit=load_cnvkit_data(
         FIXTURES / "sample.cnr", FIXTURES / "sample.call.cns", FIXTURES / "sample.genemetrics.csv"))
-    _assert_no_empty_tracks(tracks)
+    _assert_tracks_have_data(tracks)
     names = [t["name"] for t in tracks]
     assert names == ["CNVkit log\u2082", "CNVkit segments", "CNVkit genemetrics"]
 
 
 def test_purple_only_drops_cnvkit_tracks(tmp_path):
     tracks = _tracks_for(tmp_path, purple=_purple(tmp_path))
-    _assert_no_empty_tracks(tracks)
+    _assert_tracks_have_data(tracks)
     names = [t["name"] for t in tracks]
     assert names and not any(n.startswith("CNVkit") for n in names)
     assert "Coverage + CN (log\u2082)" in names
@@ -218,6 +221,39 @@ def test_purple_only_drops_cnvkit_tracks(tmp_path):
 def test_full_inputs_keep_all_tracks(tmp_path):
     tracks = _tracks_for(tmp_path, purple=_purple(tmp_path), cnvkit=load_cnvkit_data(
         FIXTURES / "sample.cnr", FIXTURES / "sample.call.cns", FIXTURES / "sample.genemetrics.csv"))
-    _assert_no_empty_tracks(tracks)
+    _assert_tracks_have_data(tracks)
     assert len(tracks) == 7
     assert sum(len(t["children"]) for t in tracks) > 7   # merged tracks keep their several children
+
+
+def test_supplied_inputs_keep_their_empty_children(tmp_path):
+    """Children with no rows (e.g. no amplifications in this sample) stay when PURPLE was
+    supplied: absence of data is shown, not hidden."""
+    tracks = {t["name"]: t for t in _tracks_for(tmp_path, purple=_purple(tmp_path))}
+    cov = tracks["Coverage + CN (log\u2082)"]["children"]
+    assert len(cov) == 5 and any(c["empty"] for c in cov)      # amp/homdel bars empty in the fixture
+    assert len(tracks["BAF"]["children"]) == 10
+
+
+def test_supplied_input_with_no_rows_is_labelled_not_removed(tmp_path):
+    """A genemetrics file with a header but no genes is not the same as no genemetrics input."""
+    gm = tmp_path / "empty.genemetrics.csv"
+    gm.write_text((FIXTURES / "sample.genemetrics.csv").read_text().splitlines()[0] + "\n")
+    cn = load_cnvkit_data(FIXTURES / "sample.cnr", FIXTURES / "sample.call.cns", gm)
+    names = [t["name"] for t in _tracks_for(tmp_path, cnvkit=cn)]
+    assert names == ["CNVkit log\u2082", "CNVkit segments", "CNVkit genemetrics (no data)"]
+    absent = [t["name"] for t in _tracks_for(tmp_path, cnvkit=load_cnvkit_data(
+        FIXTURES / "sample.cnr", FIXTURES / "sample.call.cns", None))]
+    assert absent == ["CNVkit log\u2082", "CNVkit segments"]             # not supplied: removed
+
+
+def test_supplied_segments_with_no_rows_are_labelled(tmp_path):
+    """A called-segments file with no usable rows gives a header-only SEG (igv.js accepts it),
+    shown as "CNVkit segments (no data)"."""
+    import pandas as pd
+    cns = pd.DataFrame({"chromosome": ["chrUn"], "start": [1], "end": [2], "log2": [0.1],
+                        "cn": [2], "probes": [1]})                     # only non-reported chromosomes
+    from purple_plotter import CNVkitData
+    cn = load_cnvkit_data(FIXTURES / "sample.cnr", None, None)
+    names = [t["name"] for t in _tracks_for(tmp_path, cnvkit=CNVkitData(cnr_df=cn.cnr_df, cns_df=cns))]
+    assert names == ["CNVkit log\u2082", "CNVkit segments (no data)"]

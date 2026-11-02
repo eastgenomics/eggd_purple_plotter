@@ -114,7 +114,7 @@ carrying the sample ID, purity, ploidy, status, MSI, genome build and the locus 
 image is never separated from its sample or region. The file is named
 `{sample}.{locus}.svg` / `.png`. The per-track right-click "Save Image" items are igv.js's
 plain single-track export, without the banner. The viewer area stays invisible and inert (it cannot be clicked;
-a "Loading viewer…" line is shown) until this is in place, so the toolbar can never save an
+a "Loading viewer…" status is shown, then kept for screen readers only) until this is in place, so the toolbar can never save an
 unlabelled image; if igv.js fails to
 start, that line shows the error instead.
 
@@ -232,8 +232,15 @@ and for the sequence to UCSC's AWS mirror. The CSP blocks both, so the viewer th
 load rather than reaching other hosts.
 
 A `<meta>` CSP cannot carry `frame-ancestors`, reporting or a report-only mode; a site that
-serves the viewers should add the same policy as a response header (with
-`frame-ancestors 'none'`).
+serves the viewers should add the same policy as a response header, with
+`frame-ancestors 'none'`. Browsers enforce both policies, so the header must allow the script
+hashes of **every plotter release whose viewers the site serves** (each release's `viewer.js`
+has its own hash; list them all while that release's viewers are still served). Viewers from
+v1.1.0 and earlier cannot meet such a policy at all: they load igv.js from the igv.org CDN and
+their inline script contains the sample's data, so it differs per file. Regenerate them with
+v1.2.0 or later before the header is applied. The alternative, a separate legacy policy that
+allows the CDN and `'unsafe-inline'` (or a hash per viewer), brings back the third-party code
+and injection risks this release removes.
 
 ### Script hashes
 
@@ -246,7 +253,7 @@ prints the two `sha256-…` values. For v1.2.0:
 | Script | Hash |
 |---|---|
 | igv.js 3.8.3 | `sha256-rPTumc3JG+iEIDkw25w5W8hiZ1UpM7SD2gtgnBbqBao=` |
-| viewer.js | `sha256-1NrHUs7avGNXocGgKiKFoXtSy0XbGoKRiwWGDfj3d+I=` |
+| viewer.js | `sha256-BDRIr/Fs6a2JJ9MYwwk65v16KpAN2kODnRnMi73rd9E=` |
 
 Any change to `viewer.js` or `igv.min.js` changes these; record the new values with each release.
 

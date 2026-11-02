@@ -6,6 +6,25 @@
 "use strict";
 const ppData = JSON.parse(document.getElementById("pp-data").textContent);
 
+// Status line. #pp-fallback is static text that stays only if this script never runs.
+// #pp-status is a live region that starts empty; updates are written from the next tick on, so
+// assistive technology has seen the empty region and announces each change (an early failure
+// is queued, not lost). Once the viewer is ready the line stays, visually hidden.
+let ppStatusLive = false, ppStatusNext = null;
+function ppStatusFlush() {
+  const el = document.getElementById("pp-status");
+  el.textContent = ppStatusNext[0];
+  el.classList.toggle("pp-sr-only", !!ppStatusNext[1]);
+  const fb = document.getElementById("pp-fallback");
+  if (fb) fb.remove();
+}
+function ppStatus(text, hide) {
+  ppStatusNext = [text, hide];
+  if (ppStatusLive) ppStatusFlush();
+}
+setTimeout(function () { ppStatusLive = true; ppStatusFlush(); }, 50);
+ppStatus("Loading viewer\u2026");
+
 const covLog2Bg          = ppData.cov_log2_bg;
 const barAmpBg           = ppData.bar_amp_bg;
 const barGainBg          = ppData.bar_gain_bg;
@@ -75,7 +94,7 @@ function pruneTracks(list) {
 function ppStartFailed(e) {
   window.igvError = String(e);
   console.error(e);
-  document.getElementById("pp-status").textContent = "The viewer could not start: " + String(e);
+  ppStatus("The viewer could not start: " + String(e));
 }
 
 try {
@@ -188,7 +207,7 @@ igv.createBrowser(document.getElementById("igv-div"), {
   const igvDiv = document.getElementById("igv-div");
   igvDiv.inert = false;
   igvDiv.style.opacity = "";
-  document.getElementById("pp-status").remove();
+  ppStatus("Viewer loaded.", true);
 }).catch(ppStartFailed);
 } catch (e) {
   ppStartFailed(e);

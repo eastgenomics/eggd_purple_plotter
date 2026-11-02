@@ -280,7 +280,9 @@ def test_viewer_hidden_until_save_overrides_are_installed(viewer):
             page.wait_for_function("() => window.igvReady === true || !!window.igvError", timeout=60000)
             assert page.evaluate("document.getElementById('igv-div').inert") is False
             assert page.evaluate("getComputedStyle(document.getElementById('igv-div')).opacity") == "1"
-            assert page.locator("#pp-status").count() == 0
+            assert page.inner_text("#pp-status") == "Viewer loaded."          # announced, then visually hidden
+            assert page.evaluate("document.getElementById('pp-status').classList.contains('pp-sr-only')")
+            assert page.get_attribute("#pp-status", "role") == "status"
             dl = save_via_igv_menu(page, "SVG")
             assert dl.suggested_filename.startswith("IMG_TEST.")
             assert "IMG_TEST" in Path(dl.path()).read_text(encoding="utf-8")
@@ -297,6 +299,8 @@ def test_viewer_start_failure_is_shown_and_viewer_stays_unusable(viewer):
             held.pop()[0].abort()                         # the genome cannot load
             page.wait_for_function("() => window.igvReady === true || !!window.igvError", timeout=60000)
             assert page.evaluate("window.igvError") is not None
+            page.wait_for_function(   # the status is written on a short delay (live region priming)
+                "() => document.getElementById('pp-status').textContent.includes('could not start')")
             assert "could not start" in page.inner_text("#pp-status")
             _toolbar_unusable(page)
         finally:
@@ -320,7 +324,137 @@ def test_viewer_reports_igv_js_failing_to_load(viewer, tmp_path):
             page.goto(broken.resolve().as_uri())
             page.wait_for_function("() => !!window.igvError", timeout=15000)
             assert "igv is not defined" in page.evaluate("window.igvError")
+            page.wait_for_function(   # the status is written on a short delay (live region priming)
+                "() => document.getElementById('pp-status').textContent.includes('could not start')")
             assert "could not start" in page.inner_text("#pp-status")
             assert page.evaluate("document.getElementById('igv-div').inert") is True
+        finally:
+            b.close()
+
+
+@pytest.mark.parametrize("fail_at", ["new_page", "wait_for_timeout", "close"])
+def test_playwright_failure_always_becomes_render_error(monkeypatch, tmp_path, fail_at):
+    """A Playwright error, even when the page never opened or has crashed, is reported as
+    RenderError (which the CLI prints), not UnboundLocalError or a second Playwright error."""
+    pw = pytest.importorskip("playwright.sync_api")
+
+    class Page:
+        def __getattr__(self, name):
+            if name == "wait_for_timeout" and fail_at == "wait_for_timeout":
+                def boom(*a, **k): raise pw.Error("Target closed")
+                return boom
+            if name == "goto":
+                def crash(*a, **k): raise pw.Error("Page crashed")
+                return crash
+            return lambda *a, **k: None
+
+    class Browser:
+        def new_page(self, **k):
+            if fail_at == "new_page":
+                raise pw.Error("cannot open page")
+            return Page()
+        def close(self):
+            if fail_at == "close":
+                raise pw.Error("close failed")
+
+    class Fake:
+        chromium = type("C", (), {"launch": staticmethod(lambda **k: Browser())})()
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    monkeypatch.setattr(pw, "sync_playwright", lambda: Fake())
+    html = tmp_path / "x.html"
+    html.write_text("<html></html>")
+    original = {"new_page": "cannot open page", "wait_for_timeout": "Page crashed", "close": "Page crashed"}[fail_at]
+    with pytest.raises(render_image.RenderError, match="Rendering failed.*" + original):
+        render_image.render_genome_image(html, tmp_path / "x", chromium_path="/nonexistent")
+
+
+def test_failed_close_after_success_is_a_render_error(monkeypatch, tmp_path):
+    pw = pytest.importorskip("playwright.sync_api")
+
+    class Page:
+        def evaluate(self, expr, *a):
+            return "<svg/>" if "svg()" in expr else ("ready" if "igvReady" in expr else "")
+        def __getattr__(self, name):
+            return lambda *a, **k: None
+
+    class Browser:
+        def new_page(self, **k): return Page()
+        def close(self): raise pw.Error("close failed")
+
+    class Fake:
+        chromium = type("C", (), {"launch": staticmethod(lambda **k: Browser())})()
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    monkeypatch.setattr(pw, "sync_playwright", lambda: Fake())
+    html = tmp_path / "x.html"
+    html.write_text("<html></html>")
+    with pytest.raises(render_image.RenderError, match="Could not close Chromium"):
+        render_image.render_genome_image(html, tmp_path / "x", chromium_path="/nonexistent")
+
+
+def test_blocked_viewer_script_leaves_a_visible_message(viewer, tmp_path):
+    """If the viewer code cannot run (here: it no longer matches its CSP hash), the static
+    fallback line stays visible instead of an empty page."""
+    exe, html, out = viewer
+    from playwright.sync_api import sync_playwright
+    tampered = tmp_path / "blocked.html"
+    text = html.read_text(encoding="utf-8")
+    marker = "// eggd_purple_plotter viewer code."                    # first line of viewer.js
+    assert text.count(marker) == 1
+    tampered.write_text(text.replace(marker, marker + " (changed)", 1), encoding="utf-8")
+    with sync_playwright() as p:
+        b = p.chromium.launch(executable_path=exe, args=["--no-sandbox"])
+        try:
+            page = b.new_page()
+            page.route(lambda u: u.startswith("http"), lambda r: r.abort())
+            page.goto(tampered.resolve().as_uri())
+            page.wait_for_timeout(1500)
+            assert page.is_visible("#pp-fallback")
+            assert "scripts did not run" in page.inner_text("#pp-fallback")
+            assert page.inner_text("#pp-status") == ""
+        finally:
+            b.close()
+
+
+def test_status_sequence_loading_then_loaded(viewer):
+    """The live region is primed empty, then announces loading and, when ready, completion."""
+    exe, html, out = viewer
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as p:
+        b, page, held = _held_viewer_page(p, exe, html, "hg38.chrom.sizes")
+        try:
+            assert page.inner_text("#pp-status") == "Loading viewer\u2026"
+            assert page.locator("#pp-fallback").count() == 0
+            route, entry = held.pop()
+            route.fulfill(body=(render_image.ASSETS / entry[0]).read_bytes(),
+                          content_type=entry[1], headers={"Access-Control-Allow-Origin": "*"})
+            page.wait_for_function("() => window.igvReady === true", timeout=60000)
+            page.wait_for_timeout(100)
+            assert page.inner_text("#pp-status") == "Viewer loaded."
+        finally:
+            b.close()
+
+
+def test_empty_status_region_stays_in_the_accessibility_tree(viewer):
+    """The empty live region must be present to assistive technology (not display:none or
+    visibility:hidden) so its first message is announced; it is visually hidden while empty.
+    Scripts are disabled so the region is guaranteed to still be empty when inspected."""
+    exe, html, out = viewer
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as p:
+        b = p.chromium.launch(executable_path=exe, args=["--no-sandbox"])
+        try:
+            page = b.new_context(java_script_enabled=False).new_page()
+            page.goto(html.resolve().as_uri())
+            assert page.inner_text("#pp-status") == ""
+            style = page.evaluate("[getComputedStyle(document.getElementById('pp-status')).display,"
+                                  " getComputedStyle(document.getElementById('pp-status')).visibility]")
+            assert style[0] != "none" and style[1] != "hidden"
+            cdp = page.context.new_cdp_session(page)
+            nodes = cdp.send("Accessibility.getFullAXTree")["nodes"]
+            assert any(n.get("role", {}).get("value") == "status" and not n.get("ignored") for n in nodes)
         finally:
             b.close()

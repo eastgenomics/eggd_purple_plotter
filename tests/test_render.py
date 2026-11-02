@@ -81,7 +81,7 @@ def _make_tar(tmp_path, sample="sample"):
 def test_cli_purple_only(tmp_path):
     tar = _make_tar(tmp_path)
     r = subprocess.run([
-        "python3", str(SCRIPT),
+        sys.executable, str(SCRIPT),
         "--sample", "S001",
         "--purple_tar", str(tar),
         "--qc_report", str(FIXTURES / "sample.qc_report.tsv"),
@@ -95,7 +95,7 @@ def test_cli_purple_only(tmp_path):
 
 def test_cli_cnvkit_only(tmp_path):
     r = subprocess.run([
-        "python3", str(SCRIPT),
+        sys.executable, str(SCRIPT),
         "--sample", "S002",
         "--cnvkit_cnr", str(FIXTURES / "sample.cnr"),
         "--output_dir", str(tmp_path),
@@ -106,7 +106,7 @@ def test_cli_cnvkit_only(tmp_path):
 
 def test_cli_no_data_exits_nonzero(tmp_path):
     r = subprocess.run([
-        "python3", str(SCRIPT),
+        sys.executable, str(SCRIPT),
         "--sample", "S003",
         "--output_dir", str(tmp_path),
     ], capture_output=True, text=True)
@@ -117,7 +117,7 @@ def test_cli_no_data_exits_nonzero(tmp_path):
 def test_cli_all_inputs(tmp_path):
     tar = _make_tar(tmp_path)
     r = subprocess.run([
-        "python3", str(SCRIPT),
+        sys.executable, str(SCRIPT),
         "--sample", "S004",
         "--purple_tar", str(tar),
         "--qc_report", str(FIXTURES / "sample.qc_report.tsv"),
@@ -146,7 +146,7 @@ const dataJson = html.match(/<script type="application\/json" id="pp-data">([\s\
 const texts = {};
 let n = 0, cfg = null;
 class StubBlob { constructor(parts) { this.t = parts.join(""); } }
-const noop = () => ({ addEventListener() {}, appendChild() {}, remove() {}, click() {} });
+const noop = () => ({ addEventListener() {}, appendChild() {}, remove() {}, click() {}, classList: { toggle() {} }, style: {} });
 const ctx = {
   Blob: StubBlob,
   URL: { createObjectURL(b) { const u = "blob:" + (n++); texts[u] = b.t; return u; }, revokeObjectURL() {} },
@@ -307,7 +307,7 @@ const fs = require("fs");
 const html = fs.readFileSync(process.argv[2], "utf8");
 const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
 const dataJson = html.match(/<script type="application\/json" id="pp-data">([\s\S]*?)<\/script>/)[1];
-const noop = () => ({ addEventListener() {}, appendChild() {}, remove() {}, click() {} });
+const noop = () => ({ addEventListener() {}, appendChild() {}, remove() {}, click() {}, classList: { toggle() {} }, style: {} });
 const ctx = {
   Blob: class { constructor(p) { this.t = p.join(""); } },
   URL: { createObjectURL() { return "blob:x"; }, revokeObjectURL() {} },
@@ -354,9 +354,9 @@ def test_sample_id_must_be_a_plain_file_name(tmp_path, sid):
 
 def test_cli_rejects_path_like_sample_id(tmp_path):
     r = subprocess.run([
-        "python3", str(SCRIPT), "--sample", "../victim",
+        sys.executable, str(SCRIPT), "--sample", "../victim",
         "--cnvkit_cnr", str(FIXTURES / "sample.cnr"), "--output_dir", str(tmp_path / "out"),
-    ], capture_output=True, text=True)  # nosec B603 B607
+    ], capture_output=True, text=True)  # nosec B603
     assert r.returncode != 0 and "file name" in r.stderr
     assert not (tmp_path / "victim.igv.bars.html").exists()
 
@@ -364,9 +364,9 @@ def test_cli_rejects_path_like_sample_id(tmp_path):
 def test_cli_accepts_leading_dash_sample_id_in_equals_form(tmp_path):
     """src/code.sh passes --sample=<id>, so an ID starting with '-' is not taken for an option."""
     r = subprocess.run([
-        "python3", str(SCRIPT), "--sample=-S001",
+        sys.executable, str(SCRIPT), "--sample=-S001",
         "--cnvkit_cnr", str(FIXTURES / "sample.cnr"), "--output_dir", str(tmp_path),
-    ], capture_output=True, text=True)  # nosec B603 B607
+    ], capture_output=True, text=True)  # nosec B603
     assert r.returncode == 0, r.stderr
     assert (tmp_path / "-S001.igv.bars.html").exists()
     assert '"--sample=${sample_id}"' in (SCRIPT.parents[4] / "src" / "code.sh").read_text()

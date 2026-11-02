@@ -389,3 +389,46 @@ def test_failed_close_after_success_is_a_render_error(monkeypatch, tmp_path):
     html.write_text("<html></html>")
     with pytest.raises(render_image.RenderError, match="Could not close Chromium"):
         render_image.render_genome_image(html, tmp_path / "x", chromium_path="/nonexistent")
+
+
+def test_blocked_viewer_script_leaves_a_visible_message(viewer, tmp_path):
+    """If the viewer code cannot run (here: it no longer matches its CSP hash), the static
+    fallback line stays visible instead of an empty page."""
+    exe, html, out = viewer
+    from playwright.sync_api import sync_playwright
+    tampered = tmp_path / "blocked.html"
+    text = html.read_text(encoding="utf-8")
+    marker = "// eggd_purple_plotter viewer code."                    # first line of viewer.js
+    assert text.count(marker) == 1
+    tampered.write_text(text.replace(marker, marker + " (changed)", 1), encoding="utf-8")
+    with sync_playwright() as p:
+        b = p.chromium.launch(executable_path=exe, args=["--no-sandbox"])
+        try:
+            page = b.new_page()
+            page.route(lambda u: u.startswith("http"), lambda r: r.abort())
+            page.goto(tampered.resolve().as_uri())
+            page.wait_for_timeout(1500)
+            assert page.is_visible("#pp-fallback")
+            assert "scripts did not run" in page.inner_text("#pp-fallback")
+            assert page.inner_text("#pp-status") == ""
+        finally:
+            b.close()
+
+
+def test_status_sequence_loading_then_loaded(viewer):
+    """The live region is primed empty, then announces loading and, when ready, completion."""
+    exe, html, out = viewer
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as p:
+        b, page, held = _held_viewer_page(p, exe, html, "hg38.chrom.sizes")
+        try:
+            assert page.inner_text("#pp-status") == "Loading viewer\u2026"
+            assert page.locator("#pp-fallback").count() == 0
+            route, entry = held.pop()
+            route.fulfill(body=(render_image.ASSETS / entry[0]).read_bytes(),
+                          content_type=entry[1], headers={"Access-Control-Allow-Origin": "*"})
+            page.wait_for_function("() => window.igvReady === true", timeout=60000)
+            page.wait_for_timeout(100)
+            assert page.inner_text("#pp-status") == "Viewer loaded."
+        finally:
+            b.close()

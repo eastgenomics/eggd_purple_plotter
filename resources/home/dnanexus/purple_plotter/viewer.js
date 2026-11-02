@@ -6,13 +6,23 @@
 "use strict";
 const ppData = JSON.parse(document.getElementById("pp-data").textContent);
 
-// Status line (a live region): written after the page has created it so assistive technology
-// announces each change; it stays in the page, visually hidden, once the viewer is ready.
-function ppStatus(text, hide) {
+// Status line. #pp-fallback is static text that stays only if this script never runs.
+// #pp-status is a live region that starts empty; updates are written from the next tick on, so
+// assistive technology has seen the empty region and announces each change (an early failure
+// is queued, not lost). Once the viewer is ready the line stays, visually hidden.
+let ppStatusLive = false, ppStatusNext = null;
+function ppStatusFlush() {
   const el = document.getElementById("pp-status");
-  el.textContent = text;
-  el.classList.toggle("pp-sr-only", !!hide);
+  el.textContent = ppStatusNext[0];
+  el.classList.toggle("pp-sr-only", !!ppStatusNext[1]);
+  const fb = document.getElementById("pp-fallback");
+  if (fb) fb.remove();
 }
+function ppStatus(text, hide) {
+  ppStatusNext = [text, hide];
+  if (ppStatusLive) ppStatusFlush();
+}
+setTimeout(function () { ppStatusLive = true; ppStatusFlush(); }, 50);
 ppStatus("Loading viewer\u2026");
 
 const covLog2Bg          = ppData.cov_log2_bg;

@@ -233,7 +233,7 @@ prints the two `sha256-…` values. For v1.2.0:
 | Script | Hash |
 |---|---|
 | igv.js 3.8.3 | `sha256-rPTumc3JG+iEIDkw25w5W8hiZ1UpM7SD2gtgnBbqBao=` |
-| viewer.js | `sha256-C/QUXcUxsU3uzTSaFz8cRqtm7f6Lat1kMER0Aytw0w8=` |
+| viewer.js | `sha256-azD2ofSNaIqUVj5Jn6Ni3ieqPNRokUO4QI300vmTpiI=` |
 
 Any change to `viewer.js` or `igv.min.js` changes these; record the new values with each release.
 

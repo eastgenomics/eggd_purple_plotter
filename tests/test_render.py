@@ -326,14 +326,15 @@ require("vm").runInNewContext(scripts[scripts.length - 1], ctx);
 const hostile = [{ name: "Sample", value: 'S<b id="x">"' }, "<hr/>", { name: "Value", value: 0.5 }];
 process.stdout.write(JSON.stringify({
   seg: ctx.ppPopup({ type: "seg" }, hostile),
-  wig: ctx.ppPopup({ type: "wig" }, [{ name: "a<i>", value: 1 }]),
+  wig: ctx.ppPopup({ type: "wig" }, [{ name: "a<i>", value: 1 }]) === undefined,
+  merged: ctx.ppPopup({ type: "merged" }, ["<div style=x>name</div>"]) === undefined,
   annotation: ctx.ppPopup({ type: "annotation" }, [{ name: "Name", value: "<a href='x'>EGFR</a>" }]) === undefined,
   empty: ctx.ppPopup({ type: "seg" }, []),
 }));
 """
 
 
-def test_popup_escapes_data_tracks_and_leaves_annotation_to_igv(tmp_path):
+def test_popup_escapes_segment_tracks_and_leaves_others_to_igv(tmp_path):
     node = shutil.which("node")
     if node is None:
         pytest.skip("node not available")
@@ -345,7 +346,7 @@ def test_popup_escapes_data_tracks_and_leaves_annotation_to_igv(tmp_path):
                                     check=True).stdout)  # nosec B603
     assert "<b" not in out["seg"] and "S&lt;b id=&quot;x&quot;&gt;&quot;" in out["seg"]
     assert out["seg"].count("<hr>") == 1 and "<span>Value</span>" in out["seg"]
-    assert "a&lt;i&gt;" in out["wig"]
+    assert out["wig"] is True and out["merged"] is True   # igv.js's own popup (numbers, fixed names, its markup)
     assert out["annotation"] is True          # RefSeq popups keep igv.js's own links/separators
     assert out["empty"] is False
 

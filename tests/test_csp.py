@@ -182,3 +182,60 @@ def test_segment_popup_shows_sample_id_as_text(tmp_path, track_name):
             assert found["injected"] == 0
         finally:
             b.close()
+
+
+def test_merged_track_popup_shows_igv_markup_rendered(tmp_path):
+    """Merged (wig) tracks keep igv.js's popup: its section headers and spacing render as
+    markup, each child is named, and nothing appears as literal HTML text."""
+    pytest.importorskip("playwright.sync_api")
+    exe = _chromium()
+    if exe is None:
+        pytest.skip("no Chromium available (set CHROMIUM_PATH)")
+    import tarfile
+    from playwright.sync_api import sync_playwright
+    from purple_plotter import render_html
+    tar = tmp_path / "M.purple.tar.gz"
+    with tarfile.open(tar, "w:gz") as tf:
+        for f in ("sample.amber.baf.tsv", "sample.purple.segment.tsv", "sample.target_region_cn.tsv"):
+            tf.add(FIXTURES / f, arcname=f)
+    html = tmp_path / "page.html"
+    html.write_text(render_html(PlotInputs(sample_id="MRG", locus="chr2:20000-80000",
+                                           purple=load_purple_data(tar))), encoding="utf-8")
+
+    def handle(route):
+        entry = render_image.ROUTES.get(route.request.url)
+        if entry is None:
+            route.abort()
+            return
+        route.fulfill(body=(render_image.ASSETS / entry[0]).read_bytes(),
+                      content_type=entry[1], headers={"Access-Control-Allow-Origin": "*"})
+
+    with sync_playwright() as p:
+        b = p.chromium.launch(executable_path=exe, args=["--no-sandbox"])
+        try:
+            page = b.new_page(viewport={"width": 1600, "height": 1000})
+            page.route(lambda u: u.startswith("http"), handle)
+            page.goto(html.resolve().as_uri())
+            page.wait_for_function("() => window.igvReady === true || !!window.igvError", timeout=60000)
+            page.wait_for_timeout(800)
+            box = page.evaluate("""() => {
+                const tv = window.igvBrowser.trackViews.find(v => v.track.type === "merged" && v.track.name.startsWith("Coverage"));
+                const r = tv.viewports[0].viewportElement.getBoundingClientRect();
+                return [r.x + r.width / 2, r.y + r.height * 0.3];
+            }""")
+            page.mouse.click(*box)
+            page.wait_for_timeout(1200)          # igv.js delays single-click handling
+            pops = page.evaluate("""() => { const out = [];
+                const walk = (r) => { for (const e of r.querySelectorAll(".igv-ui-popover")) out.push([e.innerHTML, e.textContent]);
+                                      for (const el of r.querySelectorAll("*")) if (el.shadowRoot) walk(el.shadowRoot); };
+                walk(document); return out; }""")
+            assert pops, "no popup"
+            inner, text = pops[-1]
+            # Visible text has no markup or entities shown literally (igv.js itself also copies each
+            # line into a title tooltip verbatim; that is its default behaviour, not checked here).
+            assert "<div" not in text and "&nbsp;" not in text and "&lt;" not in text
+            assert '<div style="background-color:rgb(245,245,245)' in inner     # header rendered as markup
+            assert "Coverage ratio" in text and "CN gain bars" in text       # named children
+            assert "blob:" not in text
+        finally:
+            b.close()

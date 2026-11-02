@@ -136,7 +136,8 @@ Tab-separated. Standard CNVkit `.call.cns` format.
 
 ### 3.6 CNVkit genemetrics (`cnvkit_genemetrics`)
 
-Comma-separated (`.csv`). Standard CNVkit genemetrics output.
+Tab-separated, despite the `.genemetrics.csv` extension (CNVkit writes tabs); it is read with
+`sep="\t"`.
 
 | Column | Type | Description |
 |---|---|---|

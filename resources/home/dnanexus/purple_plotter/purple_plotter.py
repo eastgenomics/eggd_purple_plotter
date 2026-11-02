@@ -127,8 +127,8 @@ def load_cnvkit_data(
     def _read(p: "Path | None") -> "pd.DataFrame | None":
         if p is None:
             return None
-        if not Path(p).is_file():
-            raise FileNotFoundError(f"CNVkit input {p} does not exist")
+        if not str(p) or not Path(p).is_file():
+            raise FileNotFoundError(f"CNVkit input {str(p)!r} does not exist")
         return pd.read_csv(p, sep="\t")
     return CNVkitData(
         cnr_df = _read(cnr),
@@ -608,15 +608,19 @@ def main() -> None:
             "Provide PURPLE outputs, CNVkit outputs, or both."
         )
 
-    purple = load_purple_data(Path(args.purple_tar)) if args.purple_tar else None
+    # A file argument given on the command line counts as supplied, even if it is an empty
+    # string; it is then checked like any other path, never treated as "not supplied".
+    def _path(arg):
+        return None if arg is None else Path(arg)
+
+    if args.purple_tar is not None and not Path(args.purple_tar).is_file():
+        ap.exit(1, f"ERROR: PURPLE input {args.purple_tar!r} does not exist\n")
+    purple = load_purple_data(Path(args.purple_tar)) if args.purple_tar is not None else None
     qc     = load_qc_data(Path(args.qc_report) if args.qc_report else None)
     msi    = load_msi_data(Path(args.msi_report) if args.msi_report else None)
     try:
         cnvkit = load_cnvkit_data(
-            Path(args.cnvkit_cnr)         if args.cnvkit_cnr         else None,
-            Path(args.cnvkit_call_cns)    if args.cnvkit_call_cns    else None,
-            Path(args.cnvkit_genemetrics) if args.cnvkit_genemetrics else None,
-        )
+            _path(args.cnvkit_cnr), _path(args.cnvkit_call_cns), _path(args.cnvkit_genemetrics))
     except FileNotFoundError as e:
         ap.exit(1, f"ERROR: {e}\n")
 

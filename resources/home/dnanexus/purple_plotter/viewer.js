@@ -171,9 +171,14 @@ igv.createBrowser(document.getElementById("igv-div"), {
   b.savePNGtoFile = ppSavePng;
   window.igvBrowser = b;
   window.igvReady   = true;
+  // igv.js draws its toolbar (including Save Image) before createBrowser resolves; the viewer
+  // stays hidden until the overrides above are installed, so no unlabelled export is possible.
+  document.getElementById("igv-div").style.visibility = "visible";
+  document.getElementById("pp-status").remove();
 }).catch(function (e) {
   window.igvError = String(e);
   console.error(e);
+  document.getElementById("pp-status").textContent = "The viewer could not start: " + String(e);
 });
 
 // ── Image export (current view) ─────────────────────────────────────────────

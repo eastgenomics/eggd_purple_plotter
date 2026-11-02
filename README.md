@@ -93,7 +93,9 @@ In these viewers it exports the current view (whatever locus is on screen) with 
 carrying the sample ID, purity, ploidy, status, MSI, genome build and the locus shown, so an
 image is never separated from its sample or region. The file is named
 `{sample}.{locus}.svg` / `.png`. The per-track right-click "Save Image" items are igv.js's
-plain single-track export, without the banner.
+plain single-track export, without the banner. The viewer area stays hidden (a "Loading viewer…" line is shown)
+until this is in place, so the toolbar can never save an unlabelled image; if igv.js fails to
+start, that line shows the error instead.
 
 For a file without opening a browser, render the whole-genome view headlessly:
 
@@ -223,7 +225,7 @@ prints the two `sha256-…` values. For v1.2.0:
 | Script | Hash |
 |---|---|
 | igv.js 3.8.3 | `sha256-rPTumc3JG+iEIDkw25w5W8hiZ1UpM7SD2gtgnBbqBao=` |
-| viewer.js | `sha256-iZTyS85li7e8yQ6/9gZoTrzm//89V6efXfbYwaO/MXE=` |
+| viewer.js | `sha256-PMg3q5HAsp6DEByVpKNSgV5a2MRUhae4stBnsrsw6uE=` |
 
 Any change to `viewer.js` or `igv.min.js` changes these; record the new values with each release.
 

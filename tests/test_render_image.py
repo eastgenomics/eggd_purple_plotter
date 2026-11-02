@@ -210,3 +210,60 @@ def test_csp_violation_during_export_is_reported(viewer, tmp_path):
     with pytest.raises(render_image.RenderError) as ei:
         render_image.render_genome_image(tampered, tmp_path / "e", chromium_path=exe, timeout_s=30)
     assert "Content-Security-Policy violations" in str(ei.value) and "img-src" in str(ei.value)
+
+
+def test_viewer_hidden_until_save_overrides_are_installed(viewer):
+    """igv.js shows its toolbar before createBrowser resolves; the viewer must stay hidden (so its
+    Save Image menu cannot be used) until the bannered overrides are in place."""
+    exe, html, out = viewer
+    from playwright.sync_api import sync_playwright
+    held = []
+
+    def handle(route):
+        entry = render_image.ROUTES.get(route.request.url)
+        if entry is None:
+            route.abort()
+        elif route.request.url.endswith("genomes3.json"):
+            held.append((route, entry))                 # hold initialisation here
+        else:
+            route.fulfill(body=(render_image.ASSETS / entry[0]).read_bytes(),
+                          content_type=entry[1], headers={"Access-Control-Allow-Origin": "*"})
+
+    with sync_playwright() as p:
+        b = p.chromium.launch(executable_path=exe, args=["--no-sandbox"])
+        try:
+            page = b.new_page()
+            page.route(lambda u: u.startswith("http"), handle)
+            page.goto(html.resolve().as_uri())
+            page.wait_for_function("() => document.readyState === 'complete'")
+            page.wait_for_timeout(500)
+            assert held, "genome request not held"
+            assert page.evaluate("window.igvReady || false") is False
+            assert page.evaluate("getComputedStyle(document.getElementById('igv-div')).visibility") == "hidden"
+            assert "Loading viewer" in page.inner_text("#pp-status")
+            route, entry = held.pop()
+            route.fulfill(body=(render_image.ASSETS / entry[0]).read_bytes(),
+                          content_type=entry[1], headers={"Access-Control-Allow-Origin": "*"})
+            page.wait_for_function("() => window.igvReady === true || !!window.igvError", timeout=60000)
+            assert page.evaluate("getComputedStyle(document.getElementById('igv-div')).visibility") == "visible"
+            assert page.locator("#pp-status").count() == 0
+            assert save_via_igv_menu(page, "SVG").suggested_filename.startswith("IMG_TEST.")
+        finally:
+            b.close()
+
+
+def test_viewer_start_failure_is_shown_and_viewer_stays_hidden(viewer):
+    exe, html, out = viewer
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as p:
+        b = p.chromium.launch(executable_path=exe, args=["--no-sandbox"])
+        try:
+            page = b.new_page()
+            page.route(lambda u: u.startswith("http"), lambda r: r.abort())   # no genome at all
+            page.goto(html.resolve().as_uri())
+            page.wait_for_function("() => window.igvReady === true || !!window.igvError", timeout=60000)
+            assert page.evaluate("window.igvError") is not None
+            assert page.evaluate("getComputedStyle(document.getElementById('igv-div')).visibility") == "hidden"
+            assert "could not start" in page.inner_text("#pp-status")
+        finally:
+            b.close()

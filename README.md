@@ -212,8 +212,12 @@ and for the sequence to UCSC's AWS mirror. The CSP blocks both, so the viewer th
 load rather than reaching other hosts.
 
 A `<meta>` CSP cannot carry `frame-ancestors`, reporting or a report-only mode; a site that
-serves the viewers should add the same policy as a response header (with
-`frame-ancestors 'none'`).
+serves the viewers should add the same policy as a response header, with
+`frame-ancestors 'none'`. Browsers enforce both policies, so the header must allow the script
+hashes of **every plotter release whose viewers the site serves**: viewers from v1.1.0 and
+earlier load igv.js from the igv.org CDN and carry no hashes, and each release's `viewer.js`
+has its own hash. Either list the hashes of all releases still being served, or regenerate
+older viewers with the current release before applying a single release's policy.
 
 ### Script hashes
 

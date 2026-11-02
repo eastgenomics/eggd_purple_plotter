@@ -324,3 +324,38 @@ def test_viewer_reports_igv_js_failing_to_load(viewer, tmp_path):
             assert page.evaluate("document.getElementById('igv-div').inert") is True
         finally:
             b.close()
+
+
+@pytest.mark.parametrize("fail_at", ["new_page", "wait_for_timeout"])
+def test_playwright_failure_always_becomes_render_error(monkeypatch, tmp_path, fail_at):
+    """A Playwright error, even when the page never opened or has crashed, is reported as
+    RenderError (which the CLI prints), not UnboundLocalError or a second Playwright error."""
+    pw = pytest.importorskip("playwright.sync_api")
+
+    class Page:
+        def __getattr__(self, name):
+            if name == "wait_for_timeout" and fail_at == "wait_for_timeout":
+                def boom(*a, **k): raise pw.Error("Target closed")
+                return boom
+            if name == "goto":
+                def crash(*a, **k): raise pw.Error("Page crashed")
+                return crash
+            return lambda *a, **k: None
+
+    class Browser:
+        def new_page(self, **k):
+            if fail_at == "new_page":
+                raise pw.Error("cannot open page")
+            return Page()
+        def close(self): pass
+
+    class Fake:
+        chromium = type("C", (), {"launch": staticmethod(lambda **k: Browser())})()
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    monkeypatch.setattr(pw, "sync_playwright", lambda: Fake())
+    html = tmp_path / "x.html"
+    html.write_text("<html></html>")
+    with pytest.raises(render_image.RenderError, match="Rendering failed"):
+        render_image.render_genome_image(html, tmp_path / "x", chromium_path="/nonexistent")

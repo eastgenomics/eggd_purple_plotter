@@ -40,8 +40,8 @@ At least one of `purple_tar` or `cnvkit_cnr` must be supplied. The app exits wit
 
 ### Purity, ploidy and fit status
 
-- `qc_report` takes any tab-separated file whose **first row** has numeric `purity` and `ploidy`
-  columns; other columns are ignored. This includes PURPLE's final-pass
+- `qc_report` takes any tab-separated file with a header row naming `purity` and `ploidy`
+  columns, whose **first data row** gives their numeric values; other columns are ignored. This includes PURPLE's final-pass
   `{sample}.purple.purity.tsv` (output `purity_tsv` of `eggd_cgp-purple` v1.0.1). Fractional
   ploidy is used as is: PURPLE segments are drawn as log₂(CN / ploidy), and so are CNVkit called
   segments that carry a `cn` value.

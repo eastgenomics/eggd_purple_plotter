@@ -100,9 +100,12 @@ def load_purple_data(purple_tar: Path) -> PurpleData:
 
 
 def load_qc_data(qc_report: "Path | None") -> QCData:
-    """Parse purity, ploidy, status from qc_report.tsv. Returns defaults on missing file."""
-    if qc_report is None or not Path(qc_report).exists():
+    """Parse purity, ploidy, status from qc_report.tsv. None (not supplied) → defaults;
+    a supplied path that does not exist raises FileNotFoundError."""
+    if qc_report is None:
         return QCData()
+    if not str(qc_report) or not Path(qc_report).is_file():
+        raise FileNotFoundError(f"qc_report {str(qc_report)!r} does not exist")
     row = pd.read_csv(qc_report, sep="\t").iloc[0]
     val = row.get("status", pd.NA)
     return QCData(
@@ -114,9 +117,12 @@ def load_qc_data(qc_report: "Path | None") -> QCData:
 
 
 def load_msi_data(msi_report: "Path | None") -> MSIData:
-    """Parse msi_score from msi.tsv. Returns ('?', '?') if path is None."""
-    if msi_report is None or not Path(msi_report).exists():
+    """Parse msi_score from msi.tsv. None (not supplied) → ('?', '?'); a supplied path that
+    does not exist raises FileNotFoundError."""
+    if msi_report is None:
         return MSIData()
+    if not str(msi_report) or not Path(msi_report).is_file():
+        raise FileNotFoundError(f"msi_report {str(msi_report)!r} does not exist")
     row   = pd.read_csv(msi_report, sep="\t").iloc[0]
     score = float(row["msi_score"])
     return MSIData(
@@ -130,10 +136,14 @@ def load_cnvkit_data(
     call_cns:    "Path | None",
     genemetrics: "Path | None",
 ) -> CNVkitData:
-    """Load CNVkit files. Any absent path → None DataFrame in returned dataclass."""
+    """Load CNVkit files. An omitted path (None) → None DataFrame, i.e. input not supplied.
+    A supplied path that does not exist raises FileNotFoundError: it must not be shown as
+    "not supplied"."""
     def _read(p: "Path | None") -> "pd.DataFrame | None":
-        if p is None or not Path(p).exists():
+        if p is None:
             return None
+        if not str(p) or not Path(p).is_file():
+            raise FileNotFoundError(f"CNVkit input {str(p)!r} does not exist")
         return pd.read_csv(p, sep="\t")
     return CNVkitData(
         cnr_df = _read(cnr),
@@ -449,7 +459,8 @@ def json_for_html(obj) -> str:
 
 
 def render_html(inputs: "PlotInputs") -> str:
-    """Fill HTML_BARS from PlotInputs. Empty track strings produce no track (see viewer.js)."""
+    """Fill HTML_BARS from PlotInputs. Tracks for inputs not supplied are omitted; supplied
+    inputs with no rows give empty tracks labelled "(no data)" (see viewer.js)."""
     ploidy = inputs.qc.ploidy
     sample = inputs.sample_id      # raw: it only ever reaches the JSON block (encoded) or HTML (escaped)
     # SEG is tab/newline-delimited, and the sample name is a SEG column: a tab, CR or LF in the
@@ -502,6 +513,14 @@ def render_html(inputs: "PlotInputs") -> str:
         "cnvkit_cnr_bg":        cnvkit_cnr_bg,
         "cnvkit_sns_bg":        cnvkit_sns_bg,
         "cnvkit_gm_bg":         cnvkit_gm_bg,
+        # Which inputs were supplied: the viewer removes a track only when its input was not
+        # supplied, and labels tracks of supplied inputs with no rows "(no data)".
+        "supplied": {
+            "purple":             inputs.purple is not None,
+            "cnvkit_cnr":         inputs.cnvkit.cnr_df is not None,
+            "cnvkit_call_cns":    inputs.cnvkit.cns_df is not None,
+            "cnvkit_genemetrics": inputs.cnvkit.gm_df is not None,
+        },
     }
 
     return HTML_BARS.format(
@@ -574,14 +593,21 @@ def main() -> None:
             "Provide PURPLE outputs, CNVkit outputs, or both."
         )
 
-    purple = load_purple_data(Path(args.purple_tar)) if args.purple_tar else None
-    qc     = load_qc_data(Path(args.qc_report) if args.qc_report else None)
-    msi    = load_msi_data(Path(args.msi_report) if args.msi_report else None)
-    cnvkit = load_cnvkit_data(
-        Path(args.cnvkit_cnr)         if args.cnvkit_cnr         else None,
-        Path(args.cnvkit_call_cns)    if args.cnvkit_call_cns    else None,
-        Path(args.cnvkit_genemetrics) if args.cnvkit_genemetrics else None,
-    )
+    # A file argument given on the command line counts as supplied, even if it is an empty
+    # string; it is then checked like any other path, never treated as "not supplied".
+    def _path(arg):
+        return None if arg is None else Path(arg)
+
+    if args.purple_tar is not None and not Path(args.purple_tar).is_file():
+        ap.exit(1, f"ERROR: PURPLE input {args.purple_tar!r} does not exist\n")
+    purple = load_purple_data(Path(args.purple_tar)) if args.purple_tar is not None else None
+    try:
+        qc     = load_qc_data(_path(args.qc_report))
+        msi    = load_msi_data(_path(args.msi_report))
+        cnvkit = load_cnvkit_data(
+            _path(args.cnvkit_cnr), _path(args.cnvkit_call_cns), _path(args.cnvkit_genemetrics))
+    except FileNotFoundError as e:
+        ap.exit(1, f"ERROR: {e}\n")
 
     inputs = PlotInputs(
         sample_id = args.sample,

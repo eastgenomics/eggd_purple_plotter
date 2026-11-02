@@ -69,23 +69,39 @@ function ppPopup(track, data) {
   }).join("");
 }
 
-// Blob URLs whose data is empty (input not supplied). igv.js throws while
-// parsing an empty SEG file and aborts createBrowser, leaving a blank viewer,
-// so tracks backed by empty data are removed before the browser is created.
-const emptyBlobs = new Set();
-function blob(txt) {
+// Which inputs were supplied (from purple_plotter.py, in the data block). A track is removed
+// only when its input was not supplied; that also avoids igv.js aborting createBrowser on an
+// empty SEG file. A track whose input was supplied but has no rows (e.g. no deletions, or a
+// genemetrics file with no genes) is kept, empty, and labelled "(no data)", so the two cases
+// can be told apart.
+const ppSupplied = ppData.supplied;
+const absentBlobs = new Set(), noDataBlobs = new Set();
+
+// True if the text has any data row. Only the first line can be a SEG header (the converters
+// write "SampleID\tChromosome\t..." first), so a sample really named "SampleID" still counts.
+function hasRows(txt) {
+  const body = txt.startsWith("SampleID\tChromosome\t") ? txt.slice(txt.indexOf("\n") + 1 || txt.length) : txt;
+  return /\S/.test(body);
+}
+
+function blob(txt, input) {
   const url = URL.createObjectURL(new Blob([txt], { type: "text/plain" }));
-  if (!txt.trim()) emptyBlobs.add(url);
+  if (!ppSupplied[input]) absentBlobs.add(url);
+  else if (!hasRows(txt)) noDataBlobs.add(url);
   return url;
 }
 
 function pruneTracks(list) {
   return list.map(function (t) {
-    if (t.tracks) {
-      const kept = t.tracks.filter(function (c) { return !emptyBlobs.has(c.url); });
-      return kept.length ? Object.assign({}, t, { tracks: kept }) : null;
+    const parts = t.tracks ? t.tracks : [t];
+    const kept = parts.filter(function (c) { return !absentBlobs.has(c.url); });
+    if (!kept.length) return null;                                       // input not supplied
+    const out = t.tracks ? Object.assign({}, t, { tracks: kept }) : Object.assign({}, t);
+    if (kept.every(function (c) { return noDataBlobs.has(c.url); })) {   // supplied, no rows
+      out.name = ((t.name || "").trim() || "Segments") + " (no data)";
+      if ((out.height || 0) < 25) out.height = 25;                       // room for the label
     }
-    return emptyBlobs.has(t.url) ? null : t;
+    return out;
   }).filter(Boolean);
 }
 
@@ -110,19 +126,19 @@ igv.createBrowser(document.getElementById("igv-div"), {
       type: "merged", name: "Coverage + CN (log₂)", height: 200,
       min: -2, max: 2, autoscale: false, visibilityWindow: -1, alpha: 0.6,
       tracks: [
-        { type: "wig", format: "bedgraph", url: blob(barAmpBg),
+        { type: "wig", format: "bedgraph", url: blob(barAmpBg, "purple"),
            graphType: "bar", color: "#08306b", altColor: "#08306b",
            min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
-        { type: "wig", format: "bedgraph", url: blob(barGainBg),
+        { type: "wig", format: "bedgraph", url: blob(barGainBg, "purple"),
            graphType: "bar", color: "#93c4e0", altColor: "#93c4e0",
            min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
-        { type: "wig", format: "bedgraph", url: blob(barLossBg),
+        { type: "wig", format: "bedgraph", url: blob(barLossBg, "purple"),
            graphType: "bar", color: "#fca5a5", altColor: "#fca5a5",
            min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
-        { type: "wig", format: "bedgraph", url: blob(barHodelBg),
+        { type: "wig", format: "bedgraph", url: blob(barHodelBg, "purple"),
            graphType: "bar", color: "#8b0000", altColor: "#8b0000",
            min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
-        { type: "wig", format: "bedgraph", url: blob(covLog2Bg),
+        { type: "wig", format: "bedgraph", url: blob(covLog2Bg, "purple"),
            graphType: "points", color: "rgba(80,80,80,0.5)", pointSize: 6,
            min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
       ],
@@ -131,7 +147,7 @@ igv.createBrowser(document.getElementById("igv-div"), {
     // ── 2. PURPLE CNV segments (log₂ SEG) ───────────────────────────────────
     {
       name: " ", type: "seg", format: "seg",
-      url: blob(segData), height: 10,
+      url: blob(segData, "purple"), height: 10,
       posColorScale: { low: 0.1, high: 1.5, lowColor: 'rgb(255,255,255)', highColor: 'rgb(8,48,107)' },
       negColorScale: { low: -1.5, high: -0.1, lowColor: 'rgb(139,0,0)', highColor: 'rgb(255,255,255)' },
     },
@@ -141,23 +157,23 @@ igv.createBrowser(document.getElementById("igv-div"), {
       type: "merged", name: "BAF", height: 100,
       min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, alpha: 0.6,
       tracks: [
-        { type: "wig", format: "bedgraph", url: blob(bafBarAmpTopBg),   graphType: "bar", color: "#08306b", altColor: "#08306b", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
-        { type: "wig", format: "bedgraph", url: blob(bafBarGainTopBg),  graphType: "bar", color: "#93c4e0", altColor: "#93c4e0", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
-        { type: "wig", format: "bedgraph", url: blob(bafBarLossTopBg),  graphType: "bar", color: "#fca5a5", altColor: "#fca5a5", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
-        { type: "wig", format: "bedgraph", url: blob(bafBarHodelTopBg), graphType: "bar", color: "#8b0000", altColor: "#8b0000", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
-        { type: "wig", format: "bedgraph", url: blob(bafBarAmpBotBg),   graphType: "bar", color: "#08306b", altColor: "#08306b", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
-        { type: "wig", format: "bedgraph", url: blob(bafBarGainBotBg),  graphType: "bar", color: "#93c4e0", altColor: "#93c4e0", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
-        { type: "wig", format: "bedgraph", url: blob(bafBarLossBotBg),  graphType: "bar", color: "#fca5a5", altColor: "#fca5a5", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
-        { type: "wig", format: "bedgraph", url: blob(bafBarHodelBotBg), graphType: "bar", color: "#8b0000", altColor: "#8b0000", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
-        { type: "wig", format: "bedgraph", url: blob(bafBg),            graphType: "points", color: "rgba(80,80,80,0.5)", pointSize: 6, min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
-        { type: "wig", format: "bedgraph", url: blob(bafMirBg),         graphType: "points", color: "rgba(80,80,80,0.5)", pointSize: 6, min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", url: blob(bafBarAmpTopBg, "purple"),   graphType: "bar", color: "#08306b", altColor: "#08306b", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", url: blob(bafBarGainTopBg, "purple"),  graphType: "bar", color: "#93c4e0", altColor: "#93c4e0", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", url: blob(bafBarLossTopBg, "purple"),  graphType: "bar", color: "#fca5a5", altColor: "#fca5a5", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", url: blob(bafBarHodelTopBg, "purple"), graphType: "bar", color: "#8b0000", altColor: "#8b0000", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", url: blob(bafBarAmpBotBg, "purple"),   graphType: "bar", color: "#08306b", altColor: "#08306b", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", url: blob(bafBarGainBotBg, "purple"),  graphType: "bar", color: "#93c4e0", altColor: "#93c4e0", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", url: blob(bafBarLossBotBg, "purple"),  graphType: "bar", color: "#fca5a5", altColor: "#fca5a5", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", url: blob(bafBarHodelBotBg, "purple"), graphType: "bar", color: "#8b0000", altColor: "#8b0000", min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", url: blob(bafBg, "purple"),            graphType: "points", color: "rgba(80,80,80,0.5)", pointSize: 6, min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", url: blob(bafMirBg, "purple"),         graphType: "points", color: "rgba(80,80,80,0.5)", pointSize: 6, min: -0.6, max: 0.6, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
       ],
     },
 
     // ── 4. PURPLE CNV segments (log₂ SEG) ───────────────────────────────────
     {
       name: " ", type: "seg", format: "seg",
-      url: blob(segData), height: 10,
+      url: blob(segData, "purple"), height: 10,
       posColorScale: { low: 0.1, high: 1.5, lowColor: 'rgb(255,255,255)', highColor: 'rgb(8,48,107)' },
       negColorScale: { low: -1.5, high: -0.1, lowColor: 'rgb(139,0,0)', highColor: 'rgb(255,255,255)' },
     },
@@ -167,14 +183,14 @@ igv.createBrowser(document.getElementById("igv-div"), {
       type: "merged", name: "CNVkit log₂", height: 150,
       min: -2, max: 2, autoscale: false, visibilityWindow: -1,
       tracks: [
-        { type: "wig", format: "bedgraph", url: blob(cnvkitCnrBg), graphType: "points", color: "#756bb1", pointSize: 10, min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", url: blob(cnvkitCnrBg, "cnvkit_cnr"), graphType: "points", color: "#756bb1", pointSize: 10, min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
       ],
     },
 
     // ── 6. CNVkit called segments (.call.cns) ────────────────────────────────
     {
       name: "CNVkit segments", type: "seg", format: "seg",
-      url: blob(cnvkitSnsBg), height: 50,
+      url: blob(cnvkitSnsBg, "cnvkit_call_cns"), height: 50,
       posColorScale: { low: 0.1, high: 1.5, lowColor: 'rgb(255,255,255)', highColor: 'rgb(8,48,107)' },
       negColorScale: { low: -1.5, high: -0.1, lowColor: 'rgb(139,0,0)', highColor: 'rgb(255,255,255)' },
     },
@@ -184,7 +200,7 @@ igv.createBrowser(document.getElementById("igv-div"), {
       type: "merged", name: "CNVkit genemetrics", height: 80,
       min: -2, max: 2, autoscale: false, visibilityWindow: -1,
       tracks: [
-        { type: "wig", format: "bedgraph", url: blob(cnvkitGenemetricsBg), graphType: "bar", color: "#08306b", altColor: "#8b0000", min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
+        { type: "wig", format: "bedgraph", url: blob(cnvkitGenemetricsBg, "cnvkit_genemetrics"), graphType: "bar", color: "#08306b", altColor: "#8b0000", min: -2, max: 2, autoscale: false, visibilityWindow: -1, baselineColor: "#000000" },
       ],
     },
 

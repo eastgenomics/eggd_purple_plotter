@@ -94,9 +94,8 @@
     "assetDepends": [
       {
         "name": "pp_headless_chromium",
-        "project": "project-Fkb6Gkj433GVVvj73J7x8KbV",
-        "folder": "/app_assets/pp_headless_chromium/pp_headless_chromium_v1.0.0",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "id": "record-JFV8Y9Q42qG5FFbkGjQq23Kj"
       }
     ]
   },

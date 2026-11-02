@@ -3,8 +3,8 @@
   "title": "PURPLE IGV bars plotter",
   "summary": "Generates an igv.js HTML viewer (igv.js and track data embedded; hg38 genome fetched from igv.org/UCSC when opened) from PURPLE/AMBER/CNVkit per-sample outputs",
   "dxapi": "1.0.0",
-  "version": "1.2.0",
-  "properties": { "githubRelease": "1.2.0" },
+  "version": "1.1.0",
+  "properties": { "githubRelease": "1.1.0" },
   "developers":      ["org-emee_1"],
   "authorizedUsers": ["org-emee_1"],
   "inputSpec": [

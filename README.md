@@ -34,6 +34,7 @@ Tracks whose input was not supplied are omitted. If an input was supplied but ha
 | `cnvkit_genemetrics` | file | — | `{sample}.genemetrics.tsv` (CNVkit batch v2.1.0) or the older `{sample}.genemetrics.csv`; both tab-separated |
 | `msi_report` | file | — | `{sample}.msi.tsv` |
 | `locus` | string | — | Initial IGV locus (default: `all`) |
+| `genome_image` | boolean | — | Also render the whole-genome view to PNG and SVG (default: `false`). See [Export an image of the whole-genome view](#export-an-image-of-the-whole-genome-view) |
 
 At least one of `purple_tar` or `cnvkit_cnr` must be supplied. The app exits with an error if both are absent.
 
@@ -62,6 +63,8 @@ At least one of `purple_tar` or `cnvkit_cnr` must be supplied. The app exits wit
 | Name | Class | Description |
 |---|---|---|
 | `igv_html` | file | `{sample_id}.igv.bars.html` — HTML viewer (igv.js and track data embedded; genome fetched when opened) |
+| `genome_png` | file (optional) | `{sample_id}.genome.png` — whole-genome view with the sample/QC banner; only when `genome_image=true` |
+| `genome_svg` | file (optional) | `{sample_id}.genome.svg` — the same view as SVG; only when `genome_image=true` |
 
 ---
 
@@ -109,7 +112,7 @@ open /tmp/26134S0005.igv.bars.html
 ### Export an image of the whole-genome view
 
 Use igv.js's own **Save Image** menu in the viewer toolbar (**Save as SVG** / **Save as PNG**).
-In these viewers it exports the current view (whatever locus is on screen) with a banner
+In these viewers, it exports the current view (whatever locus is on screen) with a banner
 carrying the sample ID, purity, ploidy, status, MSI, genome build and the locus shown, so an
 image is never separated from its sample or region. The file is named
 `{sample}.{locus}.svg` / `.png`. The per-track right-click "Save Image" items are igv.js's
@@ -239,9 +242,9 @@ serves the viewers should add the same policy as a response header, with
 `frame-ancestors 'none'`. Browsers enforce both policies, so the header must allow the script
 hashes of **every plotter release whose viewers the site serves** (each release's `viewer.js`
 has its own hash; list them all while that release's viewers are still served). Viewers from
-v1.1.0 and earlier cannot meet such a policy at all: they load igv.js from the igv.org CDN and
-their inline script contains the sample's data, so it differs per file. Regenerate them with
-v1.2.0 or later before the header is applied. The alternative, a separate legacy policy that
+v1.0.0 cannot meet such a policy at all: they load igv.js from the igv.org CDN and their inline
+script contains the sample's data, so it differs per file. Regenerate them with v1.1.0 or later
+before the header is applied. The alternative, a separate legacy policy that
 allows the CDN and `'unsafe-inline'` (or a hash per viewer), brings back the third-party code
 and injection risks this release removes.
 
@@ -251,7 +254,7 @@ and injection risks this release removes.
 .venv/bin/python3 resources/home/dnanexus/purple_plotter/purple_plotter.py --print-script-hashes
 ```
 
-prints the two `sha256-…` values. For v1.2.0:
+prints the two `sha256-…` values. For v1.1.0:
 
 | Script | Hash |
 |---|---|
@@ -320,7 +323,8 @@ GitHub Actions runs `pytest tests/ -v` on every push and pull request (`.github/
 
 ## Code walkthrough
 
-A 4-part annotated HTML walkthrough of `purple_plotter.py` is in [`docs/`](docs/):
+A 4-part annotated HTML walkthrough of `purple_plotter.py` is in [`docs/`](docs/). It describes
+v1.0.0: it predates the inlined igv.js, the JSON data block and the CSP (see [Security](#security)).
 
 | Part | File | Contents |
 |---|---|---|

@@ -196,6 +196,23 @@ def test_cnvkit_only_viewer_initialises_and_igv_save_menu_downloads(viewer):
                 return d.querySelector("rect").getAttribute("height"); }""")
             assert float(banner) > 0
             assert (pw, ph) == (round(2 * w), round(2 * h))
+            # Decode the downloaded PNG and check its pixels: the banner rows are the banner colour
+            # (#1a2638), and below the banner the image is the white igv.js background.
+            import base64 as _b64
+            px = page.evaluate("""async (b64) => {
+                const img = new Image(); img.src = "data:image/png;base64," + b64; await img.decode();
+                const c = document.createElement("canvas"); c.width = img.width; c.height = img.height;
+                const x = c.getContext("2d"); x.drawImage(img, 0, 0);
+                const at = (px, py) => Array.from(x.getImageData(px, py, 1, 1).data.slice(0, 3));
+                // Text pixels: light pixels inside the banner's title line (the text is #e8edf3 on #1a2638).
+                const band = x.getImageData(0, 0, Math.min(img.width, 800), 40).data;
+                let light = 0;
+                for (let i = 0; i < band.length; i += 4) if (band[i] + band[i + 1] + band[i + 2] > 450) light++;
+                return { top: at(img.width - 4, 4), belowBanner: at(img.width - 4, img.height - 4), light };
+            }""", _b64.b64encode(png).decode())
+            assert px["top"] == [0x1a, 0x26, 0x38], px
+            assert px["belowBanner"] != [0x1a, 0x26, 0x38], px
+            assert px["light"] > 200, px                     # the banner carries rendered text, not a blank band
         finally:
             b.close()
 

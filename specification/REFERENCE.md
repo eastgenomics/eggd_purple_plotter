@@ -12,6 +12,7 @@
 | `cnvkit_genemetrics` | `file` | Yes | — | `{sample}.genemetrics.tsv` (CNVkit batch v2.1.0) or `{sample}.genemetrics.csv`; both tab-separated |
 | `msi_report` | `file` | Yes | — | `{sample}.msi.tsv` from the MSI stage |
 | `locus` | `string` | Yes | `"all"` | Initial IGV locus; any valid IGV locus string (e.g. `"chr7:116,672,196-117,120,285"`) |
+| `genome_image` | `boolean` | Yes | `false` | Also render the whole-genome view (always locus `all`) to PNG and SVG with headless Chromium from the `pp_headless_chromium` asset; the job fails if rendering fails |
 
 **Minimum viable inputs:** `sample_id` + (`purple_tar` and/or `cnvkit_cnr`).
 App exits 1 if neither `purple_tar` nor `cnvkit_cnr` is present.
@@ -21,6 +22,8 @@ App exits 1 if neither `purple_tar` nor `cnvkit_cnr` is present.
 | Name | Class | Description |
 |---|---|---|
 | `igv_html` | `file` | `{sample_id}.igv.bars.html` — HTML viewer; no server required; hg38 genome fetched from igv.org/UCSC when opened |
+| `genome_png` | `file`, optional | `{sample_id}.genome.png` — whole-genome view at 2× with the sample/QC banner; only when `genome_image=true` |
+| `genome_svg` | `file`, optional | `{sample_id}.genome.svg` — the same view as SVG; only when `genome_image=true` |
 
 ---
 
@@ -153,7 +156,7 @@ Tab-separated, whether named `.genemetrics.tsv` (CNVkit batch v2.1.0) or the old
 
 ## 4. Output file format
 
-A single HTML file (structure from v1.2.0; earlier versions loaded igv.js from the igv.org CDN and held the track data in JS template literals). Key structural elements:
+A single HTML file (structure from v1.1.0; v1.0.0 loaded igv.js from the igv.org CDN and held the track data in JS template literals). Key structural elements:
 
 ```html
 <!DOCTYPE html>
@@ -304,7 +307,7 @@ Input names from `inputSpec` are available as Bash variables (e.g. `${sample_id}
 | Dependency | Purpose | Version |
 |---|---|---|
 | `pandas` | DataFrame I/O and manipulation | ≥2.0 |
-| `igv.js` | Browser-side genome viewer | 3.8.3 (embedded from v1.2.0; CDN before) |
+| `igv.js` | Browser-side genome viewer | 3.8.3 (embedded from v1.1.0; CDN in v1.0.0) |
 | `dx` CLI | DNAnexus file download/upload in `code.sh` | any (provided by platform) |
 
 All Python stdlib modules used: `argparse`, `gzip`, `io`, `math`, `tarfile`, `pathlib`.

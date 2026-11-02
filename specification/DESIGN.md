@@ -236,7 +236,7 @@ all tests run locally with fixture TSV files.
 | `test_conversion.py` | None — pure DataFrame → string transformations |
 | `test_render.py` | None — writes to `tmp_path` (pytest fixture) |
 
-**Acceptance criteria for v1.0.0:**
+**Acceptance criteria (v1.0.0, updated where v1.1.0 changed them):**
 
 - [ ] `pytest tests/ -v` passes with 0 failures
 - [ ] HTML output contains `sample_id` string in title and header

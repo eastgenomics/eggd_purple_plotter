@@ -303,7 +303,8 @@ GitHub Actions runs `pytest tests/ -v` on every push and pull request (`.github/
 
 ## Code walkthrough
 
-A 4-part annotated HTML walkthrough of `purple_plotter.py` is in [`docs/`](docs/):
+A 4-part annotated HTML walkthrough of `purple_plotter.py` is in [`docs/`](docs/). It describes
+v1.0.0: it predates the inlined igv.js, the JSON data block and the CSP (see [Security](#security)).
 
 | Part | File | Contents |
 |---|---|---|

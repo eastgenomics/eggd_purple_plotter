@@ -27,7 +27,7 @@ def _data(html):
 
 
 def _header(html):
-    return re.search(r'<div id="hdr">(.*?)<span class="btns">', html, re.S).group(1)
+    return re.search(r'<div id="hdr">(.*?)</div>', html, re.S).group(1)
 
 
 def _cli(tmp_path, *args):

@@ -351,11 +351,8 @@ body {{ font-family: -apple-system, Arial, sans-serif; background: #f0f2f5; }}
 #hdr .ttl  {{ font-size: 15px; font-weight: 600; }}
 #hdr .meta {{ font-size: 12px; color: #9aafc4; }}
 #hdr .warn {{ font-size: 12px; color: #1a2638; background: #ffd666; border-radius: 3px; padding: 1px 6px; }}
-#hdr .btns {{ margin-left: auto; display: flex; gap: 8px; }}
-#hdr button {{ font: inherit; font-size: 12px; color: #e8edf3; background: #2c3e57;
-               border: 1px solid #4a617f; border-radius: 3px; padding: 3px 10px; cursor: pointer; }}
-#hdr button:hover {{ background: #3a516f; }}
 #igv-div {{ background: white; }}
+#pp-status {{ background: white; padding: 8px 18px; font-size: 12px; color: #666; }}
 #leg {{ background: #fff; border-top: 1px solid #dde; padding: 7px 18px;
         display: flex; flex-wrap: wrap; gap: 18px; align-items: center;
         font-size: 11.5px; color: #444; }}
@@ -373,12 +370,9 @@ body {{ font-family: -apple-system, Arial, sans-serif; background: #f0f2f5; }}
     <span title="Fit status reported in the supplied purity/ploidy file. It is not a QC pass/fail assessment.">Fit status: {status} (not a QC result)</span>
     &nbsp;·&nbsp; MSI {msi_score} &nbsp;·&nbsp; {msi_status}
   </span>{ploidy_warning}
-  <span class="btns">
-    <button type="button" id="btn-svg" title="Download the current view as SVG">Save SVG</button>
-    <button type="button" id="btn-png" title="Download the current view as PNG">Save PNG</button>
-  </span>
 </div>
-<div id="igv-div"></div>
+<div id="pp-status" role="status">Loading viewer&#x2026;</div>
+<div id="igv-div" inert style="opacity: 0"></div>
 <div id="leg">
   <strong>Tracks:</strong>
   <div class="li"><div class="sw" style="background:rgba(80,80,80,0.5)"></div>Coverage ratio (PURPLE)</div>

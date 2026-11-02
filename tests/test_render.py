@@ -237,9 +237,10 @@ def test_full_inputs_keep_all_tracks(tmp_path):
     assert sum(len(t["children"]) for t in tracks) > 7   # merged tracks keep their several children
 
 
-def test_render_html_has_export_buttons_and_hooks():
+def test_render_html_has_no_extra_save_buttons_and_hooks_igv_save_menu():
     html = render_html(PlotInputs(sample_id="S001"))
-    assert 'id="btn-svg"' in html and 'id="btn-png"' in html
+    assert "<button" not in html.split("<script")[0]              # no extra buttons: igv.js's Save Image menu is used
+    assert "b.saveSVGtoFile = ppSaveSvg" in html and "b.savePNGtoFile = ppSavePng" in html
     assert "window.ppExport" in html
     assert "window.igvReady" in html
 

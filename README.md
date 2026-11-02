@@ -108,9 +108,15 @@ open /tmp/26134S0005.igv.bars.html
 
 ### Export an image of the whole-genome view
 
-The viewer header has **Save SVG** and **Save PNG** buttons. They export the
-current view (whatever locus is on screen) with a banner carrying the sample ID,
-purity, ploidy, status, MSI, genome build and the locus shown, so an image is never separated from its sample or region.
+Use igv.js's own **Save Image** menu in the viewer toolbar (**Save as SVG** / **Save as PNG**).
+In these viewers it exports the current view (whatever locus is on screen) with a banner
+carrying the sample ID, purity, ploidy, status, MSI, genome build and the locus shown, so an
+image is never separated from its sample or region. The file is named
+`{sample}.{locus}.svg` / `.png`. The per-track right-click "Save Image" items are igv.js's
+plain single-track export, without the banner. The viewer area stays invisible and inert (it cannot be clicked;
+a "Loading viewer…" line is shown) until this is in place, so the toolbar can never save an
+unlabelled image; if igv.js fails to
+start, that line shows the error instead.
 
 For a file without opening a browser, render the whole-genome view headlessly:
 
@@ -217,7 +223,7 @@ object-src 'none'
 
 These directives were established in a real browser by recording `securitypolicyviolation`
 events while loading the whole genome, a chromosome, a 2 kb and a 100 bp window (sequence
-from UCSC), a gene search (`EGFR`), the RefSeq track, and both Save buttons, from `file://` and
+from UCSC), a gene search (`EGFR`), the RefSeq track, and both Save Image menu items, from `file://` and
 `http://localhost`: no violations. `tests/test_csp.py` repeats this offline in CI, and online
 with `PP_LIVE_NETWORK=1`.
 
@@ -240,7 +246,7 @@ prints the two `sha256-…` values. For v1.2.0:
 | Script | Hash |
 |---|---|
 | igv.js 3.8.3 | `sha256-rPTumc3JG+iEIDkw25w5W8hiZ1UpM7SD2gtgnBbqBao=` |
-| viewer.js | `sha256-wRBeBVpKrnaYKFFH3TRctA66RaAG26oFL38OtBX3K9U=` |
+| viewer.js | `sha256-1NrHUs7avGNXocGgKiKFoXtSy0XbGoKRiwWGDfj3d+I=` |
 
 Any change to `viewer.js` or `igv.min.js` changes these; record the new values with each release.
 

@@ -70,6 +70,15 @@ function pruneTracks(list) {
   }).filter(Boolean);
 }
 
+// Start-up failure, whether igv.createBrowser rejects or throws before returning (e.g. if
+// igv.js itself did not load): record it for the renderer and show it; the viewer stays inert.
+function ppStartFailed(e) {
+  window.igvError = String(e);
+  console.error(e);
+  document.getElementById("pp-status").textContent = "The viewer could not start: " + String(e);
+}
+
+try {
 igv.createBrowser(document.getElementById("igv-div"), {
   genome:    "hg38",
   locus:     new URLSearchParams(location.search).get("locus") || ppData.locus,
@@ -163,16 +172,32 @@ igv.createBrowser(document.getElementById("igv-div"), {
   ]),
 }).then(function (b) {
   b.on("trackclick", ppPopup);
+  // igv.js's toolbar "Save Image" menu (Save as SVG / Save as PNG) calls these two methods;
+  // replace them on this browser so the files carry the sample/QC banner and a sample-based
+  // name instead of a plain igvjs.svg / igvjs.png. The per-track right-click "Save Image"
+  // items are igv.js's own single-track export and are left unchanged.
+  b.saveSVGtoFile = ppSaveSvg;
+  b.savePNGtoFile = ppSavePng;
   window.igvBrowser = b;
   window.igvReady   = true;
-}).catch(function (e) {
-  window.igvError = String(e);
-  console.error(e);
-});
+  // igv.js draws its toolbar (including Save Image) before createBrowser resolves. The viewer
+  // starts inert (no clicks or keyboard focus, including inside igv's shadow root) and
+  // transparent, keeping its layout, until the overrides above are installed, so no
+  // unlabelled export is possible. (visibility:hidden is not enough: igv's own styles can
+  // make parts of the toolbar visible again.)
+  const igvDiv = document.getElementById("igv-div");
+  igvDiv.inert = false;
+  igvDiv.style.opacity = "";
+  document.getElementById("pp-status").remove();
+}).catch(ppStartFailed);
+} catch (e) {
+  ppStartFailed(e);
+}
 
 // ── Image export (current view) ─────────────────────────────────────────────
-// ppExport is also called by the headless renderer (render_image.py), so the
-// downloaded files and the pipeline output come from the same code path.
+// Used by igv.js's "Save Image" menu (via the overrides above) and, through
+// window.ppExport, by the headless renderer (render_image.py), so the downloaded
+// files and the pipeline output come from the same code path.
 const ppSampleFile = ppData.sample_file;
 
 // Exported images carry the sample ID, purity/ploidy/status and MSI banner from
@@ -309,12 +334,13 @@ window.ppExport = {
   },
 };
 
-document.getElementById("btn-svg").addEventListener("click", function () {
+function ppSaveSvg() {
   try {
     ppDownload(new Blob([ppSvg()], { type: "image/svg+xml" }), ppSampleFile + "." + ppLocusTag() + ".svg");
   } catch (e) { alert("Could not export SVG: " + e.message); }
-});
-document.getElementById("btn-png").addEventListener("click", function () {
+}
+
+function ppSavePng() {
   ppPng(2).then(function (blob) { ppDownload(blob, ppSampleFile + "." + ppLocusTag() + ".png"); })
           .catch(function (e) { alert("Could not export PNG: " + e.message); });
-});
+}

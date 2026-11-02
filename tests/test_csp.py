@@ -17,6 +17,7 @@ PKG = Path(__file__).parent.parent / "resources/home/dnanexus/purple_plotter"
 sys.path.insert(0, str(PKG))
 
 import render_image
+from igv_ui import save_via_igv_menu
 from purple_plotter import PlotInputs, QCData, load_cnvkit_data, load_purple_data, write_html
 
 FIXTURES = Path(__file__).parent / "test_data"
@@ -91,9 +92,8 @@ def _exercise(exe, html, offline, loci):
                 assert any(l.startswith(expect) for l in shown), (locus, shown)   # the search really moved
             assert page.evaluate("window.ppExport.svg()").startswith("<svg")
             assert len(page.evaluate("s => window.ppExport.png(s)", 2)) > 1000
-            for btn in ("#btn-svg", "#btn-png"):        # the real click path (inline handlers would violate)
-                with page.expect_download():
-                    page.click(btn)
+            for fmt in ("SVG", "PNG"):        # igv.js's Save Image menu: the real click path
+                assert save_via_igv_menu(page, fmt).suggested_filename.startswith("CSP_TEST.")
             return page.evaluate("window.__csp"), errors, requests
         finally:
             b.close()

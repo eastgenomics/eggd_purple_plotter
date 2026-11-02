@@ -305,6 +305,8 @@ body {{ font-family: -apple-system, Arial, sans-serif; background: #f0f2f5; }}
 #hdr .meta {{ font-size: 12px; color: #9aafc4; }}
 #igv-div {{ background: white; }}
 #pp-status {{ background: white; padding: 8px 18px; font-size: 12px; color: #666; }}
+#pp-status.pp-sr-only {{ position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden;
+                         clip: rect(0 0 0 0); white-space: nowrap; border: 0; }}
 #leg {{ background: #fff; border-top: 1px solid #dde; padding: 7px 18px;
         display: flex; flex-wrap: wrap; gap: 18px; align-items: center;
         font-size: 11.5px; color: #444; }}
@@ -322,7 +324,7 @@ body {{ font-family: -apple-system, Arial, sans-serif; background: #f0f2f5; }}
     &nbsp;·&nbsp; MSI {msi_score} &nbsp;·&nbsp; {msi_status}
   </span>
 </div>
-<div id="pp-status" role="status">Loading viewer&#x2026;</div>
+<div id="pp-status" role="status"></div>
 <div id="igv-div" inert style="opacity: 0"></div>
 <div id="leg">
   <strong>Tracks:</strong>

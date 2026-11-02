@@ -280,7 +280,9 @@ def test_viewer_hidden_until_save_overrides_are_installed(viewer):
             page.wait_for_function("() => window.igvReady === true || !!window.igvError", timeout=60000)
             assert page.evaluate("document.getElementById('igv-div').inert") is False
             assert page.evaluate("getComputedStyle(document.getElementById('igv-div')).opacity") == "1"
-            assert page.locator("#pp-status").count() == 0
+            assert page.inner_text("#pp-status") == "Viewer loaded."          # announced, then visually hidden
+            assert page.evaluate("document.getElementById('pp-status').classList.contains('pp-sr-only')")
+            assert page.get_attribute("#pp-status", "role") == "status"
             dl = save_via_igv_menu(page, "SVG")
             assert dl.suggested_filename.startswith("IMG_TEST.")
             assert "IMG_TEST" in Path(dl.path()).read_text(encoding="utf-8")
@@ -359,7 +361,8 @@ def test_playwright_failure_always_becomes_render_error(monkeypatch, tmp_path, f
     monkeypatch.setattr(pw, "sync_playwright", lambda: Fake())
     html = tmp_path / "x.html"
     html.write_text("<html></html>")
-    with pytest.raises(render_image.RenderError, match="Rendering failed"):
+    original = {"new_page": "cannot open page", "wait_for_timeout": "Page crashed", "close": "Page crashed"}[fail_at]
+    with pytest.raises(render_image.RenderError, match="Rendering failed.*" + original):
         render_image.render_genome_image(html, tmp_path / "x", chromium_path="/nonexistent")
 
 

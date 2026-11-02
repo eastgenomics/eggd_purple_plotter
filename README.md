@@ -94,7 +94,7 @@ carrying the sample ID, purity, ploidy, status, MSI, genome build and the locus 
 image is never separated from its sample or region. The file is named
 `{sample}.{locus}.svg` / `.png`. The per-track right-click "Save Image" items are igv.js's
 plain single-track export, without the banner. The viewer area stays invisible and inert (it cannot be clicked;
-a "Loading viewer…" line is shown) until this is in place, so the toolbar can never save an
+a "Loading viewer…" status is shown, then kept for screen readers only) until this is in place, so the toolbar can never save an
 unlabelled image; if igv.js fails to
 start, that line shows the error instead.
 
@@ -233,7 +233,7 @@ prints the two `sha256-…` values. For v1.2.0:
 | Script | Hash |
 |---|---|
 | igv.js 3.8.3 | `sha256-rPTumc3JG+iEIDkw25w5W8hiZ1UpM7SD2gtgnBbqBao=` |
-| viewer.js | `sha256-8iOk03BuFlehtGuRqKgNpxiB7uWCtUBmwdq/WFubKi0=` |
+| viewer.js | `sha256-C/QUXcUxsU3uzTSaFz8cRqtm7f6Lat1kMER0Aytw0w8=` |
 
 Any change to `viewer.js` or `igv.min.js` changes these; record the new values with each release.
 

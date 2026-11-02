@@ -6,6 +6,15 @@
 "use strict";
 const ppData = JSON.parse(document.getElementById("pp-data").textContent);
 
+// Status line (a live region): written after the page has created it so assistive technology
+// announces each change; it stays in the page, visually hidden, once the viewer is ready.
+function ppStatus(text, hide) {
+  const el = document.getElementById("pp-status");
+  el.textContent = text;
+  el.classList.toggle("pp-sr-only", !!hide);
+}
+ppStatus("Loading viewer\u2026");
+
 const covLog2Bg          = ppData.cov_log2_bg;
 const barAmpBg           = ppData.bar_amp_bg;
 const barGainBg          = ppData.bar_gain_bg;
@@ -75,7 +84,7 @@ function pruneTracks(list) {
 function ppStartFailed(e) {
   window.igvError = String(e);
   console.error(e);
-  document.getElementById("pp-status").textContent = "The viewer could not start: " + String(e);
+  ppStatus("The viewer could not start: " + String(e));
 }
 
 try {
@@ -188,7 +197,7 @@ igv.createBrowser(document.getElementById("igv-div"), {
   const igvDiv = document.getElementById("igv-div");
   igvDiv.inert = false;
   igvDiv.style.opacity = "";
-  document.getElementById("pp-status").remove();
+  ppStatus("Viewer loaded.", true);
 }).catch(ppStartFailed);
 } catch (e) {
   ppStartFailed(e);

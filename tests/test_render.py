@@ -146,7 +146,7 @@ const dataJson = html.match(/<script type="application\/json" id="pp-data">([\s\
 const texts = {};
 let n = 0, cfg = null;
 class StubBlob { constructor(parts) { this.t = parts.join(""); } }
-const noop = () => ({ addEventListener() {}, appendChild() {}, remove() {}, click() {} });
+const noop = () => ({ addEventListener() {}, appendChild() {}, remove() {}, click() {}, classList: { toggle() {} }, style: {} });
 const ctx = {
   Blob: StubBlob,
   URL: { createObjectURL(b) { const u = "blob:" + (n++); texts[u] = b.t; return u; }, revokeObjectURL() {} },
@@ -307,7 +307,7 @@ const fs = require("fs");
 const html = fs.readFileSync(process.argv[2], "utf8");
 const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
 const dataJson = html.match(/<script type="application\/json" id="pp-data">([\s\S]*?)<\/script>/)[1];
-const noop = () => ({ addEventListener() {}, appendChild() {}, remove() {}, click() {} });
+const noop = () => ({ addEventListener() {}, appendChild() {}, remove() {}, click() {}, classList: { toggle() {} }, style: {} });
 const ctx = {
   Blob: class { constructor(p) { this.t = p.join(""); } },
   URL: { createObjectURL() { return "blob:x"; }, revokeObjectURL() {} },

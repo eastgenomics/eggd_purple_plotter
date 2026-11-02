@@ -92,9 +92,12 @@ def load_purple_data(purple_tar: Path) -> PurpleData:
 
 
 def load_qc_data(qc_report: "Path | None") -> QCData:
-    """Parse purity, ploidy, status from qc_report.tsv. Returns defaults on missing file."""
-    if qc_report is None or not Path(qc_report).exists():
+    """Parse purity, ploidy, status from qc_report.tsv. None (not supplied) → defaults;
+    a supplied path that does not exist raises FileNotFoundError."""
+    if qc_report is None:
         return QCData()
+    if not str(qc_report) or not Path(qc_report).is_file():
+        raise FileNotFoundError(f"qc_report {str(qc_report)!r} does not exist")
     row = pd.read_csv(qc_report, sep="\t").iloc[0]
     val = row.get("status", pd.NA)
     return QCData(
@@ -106,9 +109,12 @@ def load_qc_data(qc_report: "Path | None") -> QCData:
 
 
 def load_msi_data(msi_report: "Path | None") -> MSIData:
-    """Parse msi_score from msi.tsv. Returns ('?', '?') if path is None."""
-    if msi_report is None or not Path(msi_report).exists():
+    """Parse msi_score from msi.tsv. None (not supplied) → ('?', '?'); a supplied path that
+    does not exist raises FileNotFoundError."""
+    if msi_report is None:
         return MSIData()
+    if not str(msi_report) or not Path(msi_report).is_file():
+        raise FileNotFoundError(f"msi_report {str(msi_report)!r} does not exist")
     row   = pd.read_csv(msi_report, sep="\t").iloc[0]
     score = float(row["msi_score"])
     return MSIData(
@@ -781,9 +787,9 @@ def main() -> None:
     if args.purple_tar is not None and not Path(args.purple_tar).is_file():
         ap.exit(1, f"ERROR: PURPLE input {args.purple_tar!r} does not exist\n")
     purple = load_purple_data(Path(args.purple_tar)) if args.purple_tar is not None else None
-    qc     = load_qc_data(Path(args.qc_report) if args.qc_report else None)
-    msi    = load_msi_data(Path(args.msi_report) if args.msi_report else None)
     try:
+        qc     = load_qc_data(_path(args.qc_report))
+        msi    = load_msi_data(_path(args.msi_report))
         cnvkit = load_cnvkit_data(
             _path(args.cnvkit_cnr), _path(args.cnvkit_call_cns), _path(args.cnvkit_genemetrics))
     except FileNotFoundError as e:

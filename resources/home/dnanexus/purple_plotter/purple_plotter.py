@@ -323,7 +323,7 @@ body {{ font-family: -apple-system, Arial, sans-serif; background: #f0f2f5; }}
   </span>
 </div>
 <div id="pp-status">Loading viewer&#x2026;</div>
-<div id="igv-div" style="visibility: hidden"></div>
+<div id="igv-div" inert style="opacity: 0"></div>
 <div id="leg">
   <strong>Tracks:</strong>
   <div class="li"><div class="sw" style="background:rgba(80,80,80,0.5)"></div>Coverage ratio (PURPLE)</div>

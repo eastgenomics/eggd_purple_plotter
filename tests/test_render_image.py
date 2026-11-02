@@ -212,58 +212,81 @@ def test_csp_violation_during_export_is_reported(viewer, tmp_path):
     assert "Content-Security-Policy violations" in str(ei.value) and "img-src" in str(ei.value)
 
 
-def test_viewer_hidden_until_save_overrides_are_installed(viewer):
-    """igv.js shows its toolbar before createBrowser resolves; the viewer must stay hidden (so its
-    Save Image menu cannot be used) until the bannered overrides are in place."""
-    exe, html, out = viewer
-    from playwright.sync_api import sync_playwright
+def _held_viewer_page(p, exe, html, hold_suffix):
+    """Open the viewer with the request ending in hold_suffix held (fulfilled later, or aborted)."""
     held = []
 
     def handle(route):
         entry = render_image.ROUTES.get(route.request.url)
         if entry is None:
             route.abort()
-        elif route.request.url.endswith("genomes3.json"):
-            held.append((route, entry))                 # hold initialisation here
+        elif route.request.url.endswith(hold_suffix):
+            held.append((route, entry))
         else:
             route.fulfill(body=(render_image.ASSETS / entry[0]).read_bytes(),
                           content_type=entry[1], headers={"Access-Control-Allow-Origin": "*"})
 
+    b = p.chromium.launch(executable_path=exe, args=["--no-sandbox"])
+    page = b.new_page()
+    page.route(lambda u: u.startswith("http"), handle)
+    page.goto(html.resolve().as_uri())
+    for _ in range(40):                                  # until the held request has been made
+        if held:
+            break
+        page.wait_for_timeout(100)
+    assert held, f"{hold_suffix} request not seen"
+    page.wait_for_timeout(500)                           # toolbar has been drawn by now
+    return b, page, held
+
+
+def _toolbar_unusable(page):
+    from playwright.sync_api import TimeoutError as PWTimeout
+    assert page.evaluate("window.igvReady || false") is False
+    assert page.evaluate("document.getElementById('igv-div').inert") is True
+    assert page.evaluate("getComputedStyle(document.getElementById('igv-div')).opacity") == "0"
+    assert page.get_by_text("Save Image", exact=True).count() >= 1      # igv has drawn it ...
+    downloads = []
+    page.on("download", lambda d: downloads.append(d))
+    with pytest.raises(PWTimeout):                                       # ... but it cannot be clicked
+        page.get_by_text("Save Image", exact=True).first.click(timeout=1500)
+    page.wait_for_timeout(300)
+    assert downloads == []
+
+
+def test_viewer_hidden_until_save_overrides_are_installed(viewer):
+    """igv.js shows its toolbar before createBrowser resolves; while the chromosome sizes are still
+    loading the viewer must be invisible and unusable, then save the bannered image once ready."""
+    exe, html, out = viewer
+    from playwright.sync_api import sync_playwright
     with sync_playwright() as p:
-        b = p.chromium.launch(executable_path=exe, args=["--no-sandbox"])
+        b, page, held = _held_viewer_page(p, exe, html, "hg38.chrom.sizes")
         try:
-            page = b.new_page()
-            page.route(lambda u: u.startswith("http"), handle)
-            page.goto(html.resolve().as_uri())
-            page.wait_for_function("() => document.readyState === 'complete'")
-            page.wait_for_timeout(500)
-            assert held, "genome request not held"
-            assert page.evaluate("window.igvReady || false") is False
-            assert page.evaluate("getComputedStyle(document.getElementById('igv-div')).visibility") == "hidden"
+            _toolbar_unusable(page)
             assert "Loading viewer" in page.inner_text("#pp-status")
             route, entry = held.pop()
             route.fulfill(body=(render_image.ASSETS / entry[0]).read_bytes(),
                           content_type=entry[1], headers={"Access-Control-Allow-Origin": "*"})
             page.wait_for_function("() => window.igvReady === true || !!window.igvError", timeout=60000)
-            assert page.evaluate("getComputedStyle(document.getElementById('igv-div')).visibility") == "visible"
+            assert page.evaluate("document.getElementById('igv-div').inert") is False
+            assert page.evaluate("getComputedStyle(document.getElementById('igv-div')).opacity") == "1"
             assert page.locator("#pp-status").count() == 0
-            assert save_via_igv_menu(page, "SVG").suggested_filename.startswith("IMG_TEST.")
+            dl = save_via_igv_menu(page, "SVG")
+            assert dl.suggested_filename.startswith("IMG_TEST.")
+            assert "IMG_TEST" in Path(dl.path()).read_text(encoding="utf-8")
         finally:
             b.close()
 
 
-def test_viewer_start_failure_is_shown_and_viewer_stays_hidden(viewer):
+def test_viewer_start_failure_is_shown_and_viewer_stays_unusable(viewer):
     exe, html, out = viewer
     from playwright.sync_api import sync_playwright
     with sync_playwright() as p:
-        b = p.chromium.launch(executable_path=exe, args=["--no-sandbox"])
+        b, page, held = _held_viewer_page(p, exe, html, "hg38.chrom.sizes")
         try:
-            page = b.new_page()
-            page.route(lambda u: u.startswith("http"), lambda r: r.abort())   # no genome at all
-            page.goto(html.resolve().as_uri())
+            held.pop()[0].abort()                         # the genome cannot load
             page.wait_for_function("() => window.igvReady === true || !!window.igvError", timeout=60000)
             assert page.evaluate("window.igvError") is not None
-            assert page.evaluate("getComputedStyle(document.getElementById('igv-div')).visibility") == "hidden"
             assert "could not start" in page.inner_text("#pp-status")
+            _toolbar_unusable(page)
         finally:
             b.close()

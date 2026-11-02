@@ -18,7 +18,7 @@ Given per-sample input files, the app:
 6. Renders a single self-contained HTML file with 7 igv.js tracks
 7. Uploads the HTML and registers it as the `igv_html` output
 
-Missing optional inputs are handled gracefully — tracks are simply omitted.
+Tracks whose input was not supplied are omitted. If an input was supplied but has no rows to plot (for example a genemetrics file with no genes), its track is kept, empty, and its name ends in "(no data)", so the two cases can be told apart.
 
 ---
 

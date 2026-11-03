@@ -2,7 +2,7 @@
 target-version = "py312"
 
 [tool.ruff.lint]
-# E9: syntax errors; F: pyflakes; B: bugbear; S: bandit rules (all severities); BLE: blind except
+# E9: syntax errors; F: pyflakes; B: bugbear; S: Ruff's bandit-derived rules (not every bandit check); BLE: blind except
 select = ["E9", "F", "B", "S", "BLE"]
 ignore = []
 

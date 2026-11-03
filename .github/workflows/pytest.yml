@@ -33,10 +33,10 @@ jobs:
         with: { python-version: "3.12" }
       - name: Install lint tools
         run: pip install ruff==0.17.3 zizmor==1.31.1
-      - name: Ruff (pyflakes, bugbear, bandit rules at all severities, blind except; config in pyproject.toml)
+      - name: Ruff (pyflakes, bugbear, Ruff's bandit-derived S rules, blind except; config in pyproject.toml)
         run: ruff check resources tests
-      - name: zizmor (GitHub Actions workflow security)
-        run: zizmor --offline .github/workflows/
+      - name: zizmor (GitHub Actions workflow security; --strict-collection fails on a malformed workflow)
+        run: zizmor --offline --strict-collection .github/workflows/
       - name: ShellCheck (runner's preinstalled version)
         run: |
           shellcheck --version

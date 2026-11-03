@@ -1,3 +1,4 @@
 #!/bin/bash
 
+# shellcheck disable=SC2145  # code kept identical to the org-wide copy in eastgenomics/eggd_vcf_header_corrector; inside quotes ${@} joins with spaces, same output as $*
 echo -n "Error while ${@} (please refer to the job log for more information)." | jq -R -s '{error: {type: "AppError", message: .}}' > ~/job_error.json

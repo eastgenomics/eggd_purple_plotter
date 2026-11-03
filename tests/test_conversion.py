@@ -5,7 +5,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "resources/home/dnanexus/p
 
 from purple_plotter import (
     coverage_log2_bedgraph, cn_bars_by_state, baf_bedgraph, baf_bedgraph_mirror,
-    baf_seg_bars_by_state, to_seg, cnr_to_bedgraph, cns_to_seg, genemetrics_to_bedgraph,
+    baf_seg_bars_by_state, to_seg, cnr_to_bedgraph, genemetrics_to_bedgraph,
 )
 
 
@@ -103,7 +103,7 @@ def test_bedgraph_converters_emit_only_numeric_columns():
     import re
     import pandas as pd
     from purple_plotter import (cnr_to_bedgraph, genemetrics_to_bedgraph, coverage_log2_bedgraph,
-                                baf_bedgraph, baf_bedgraph_mirror, cn_bars_by_state, baf_seg_bars_by_state)
+                                baf_bedgraph, baf_bedgraph_mirror, cn_bars_by_state)
     evil = "<img src=x onerror=alert(1)>"
     cnr = pd.DataFrame({"chromosome": ["chr1", evil], "start": [1, 2], "end": [10, 20],
                         "gene": [evil, evil], "log2": [0.5, 0.1], "depth": [1, 1], "weight": [1, 1]})

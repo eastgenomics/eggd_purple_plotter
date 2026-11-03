@@ -141,7 +141,7 @@ def load_qc_data(qc_report: "Path | None") -> QCData:
     if len(fields) != len(header):
         raise InputError(f"qc_report {path.name}: first data row has {len(fields)} fields "
                          f"but the header has {len(header)}")
-    row = dict(zip(header, (f.strip() for f in fields)))
+    row = dict(zip(header, (f.strip() for f in fields), strict=True))
     values = {}
     for col in ("purity", "ploidy"):
         try:

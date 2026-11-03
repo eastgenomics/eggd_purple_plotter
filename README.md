@@ -327,7 +327,22 @@ python3 -c "import json; json.load(open('dxapp.json')); print('valid')"
 
 ### CI
 
-GitHub Actions runs `pytest tests/ -v` on every push and pull request (`.github/workflows/pytest.yml`).
+`.github/workflows/pytest.yml` runs three jobs on every pull request and on pushes to `main`:
+
+- **test**: `pytest tests/ -v`, with the runner's preinstalled Chrome for the image-export tests.
+- **lint**: Ruff (`ruff check resources tests`; rules in `pyproject.toml`), zizmor
+  (`zizmor --offline .github/workflows/`) and ShellCheck on `src/code.sh`, `infra/*.sh` and
+  `resources/usr/bin/*`.
+- **security**: bandit (fails on HIGH only; Ruff's `S` rules cover all severities) and
+  `pip-audit -r requirements.txt`.
+
+`scheduled-scan.yml` also runs pip-audit and Trivy every Monday. To run the lint job locally:
+
+```bash
+uvx ruff@0.17.3 check resources tests
+uvx zizmor@1.31.1 --offline .github/workflows/
+shellcheck src/code.sh infra/*.sh resources/usr/bin/mark-section resources/usr/bin/mark-success
+```
 
 ---
 

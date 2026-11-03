@@ -1,13 +1,10 @@
-import gzip
 import tarfile
-import io
 from pathlib import Path
 import pytest
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent / "resources/home/dnanexus/purple_plotter"))
 
 from purple_plotter import load_purple_data, load_qc_data, load_msi_data, load_cnvkit_data
-from purple_plotter import QCData, MSIData, CNVkitData
 
 FIXTURES = Path(__file__).parent / "test_data"
 

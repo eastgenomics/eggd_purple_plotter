@@ -4,7 +4,6 @@ Needs Playwright and a Chromium binary (``$CHROMIUM_PATH``, a chromium/chrome on
 PATH, or Playwright's own browser). Skipped when either is missing, so the normal
 CI job (which installs only pandas + pytest) is unaffected.
 """
-import base64
 import os
 import shutil
 import sys

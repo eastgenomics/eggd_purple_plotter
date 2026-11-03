@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2154  # inputs (sample_id etc.) are set by the DNAnexus job environment
 set -exo pipefail
 
 main() {

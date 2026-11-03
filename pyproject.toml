@@ -1,0 +1,11 @@
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+# E9: syntax errors; F: pyflakes; B: bugbear; S: Ruff's bandit-derived rules (not every bandit check); BLE: blind except
+select = ["E9", "F", "B", "S", "BLE"]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+# asserts are how pytest tests check; subprocess calls run our own CLI with fixed argument lists
+"tests/*" = ["S101", "S603"]

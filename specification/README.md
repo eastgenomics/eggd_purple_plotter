@@ -68,10 +68,11 @@ eggd_purple_plotter/
 │       ├── sample.call.cns                     # CNVkit called segments fixture
 │       └── sample.genemetrics.csv              # CNVkit genemetrics fixture
 ├── requirements.txt                            # Local dev only (pandas, pytest)
+├── pyproject.toml                              # Ruff lint rules (used by the CI lint job)
 ├── README.md                                   # End-user readme (build from this spec)
 └── .github/
     └── workflows/
-        └── pytest.yml                          # CI: runs pytest on push/PR
+        └── pytest.yml                          # CI: pytest, lint (Ruff, zizmor, ShellCheck), security (bandit, pip-audit)
 ```
 
 ## Quick start (once built)

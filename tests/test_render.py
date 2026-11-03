@@ -7,7 +7,7 @@ import subprocess
 import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "resources/home/dnanexus/purple_plotter"))
 
-from purple_plotter import (PlotInputs, QCData, MSIData, render_html, write_html,
+from purple_plotter import (PlotInputs, QCData, render_html, write_html,
                             load_purple_data, load_cnvkit_data)
 
 FIXTURES = Path(__file__).parent / "test_data"
@@ -351,7 +351,7 @@ def test_popup_escapes_segment_tracks_and_leaves_others_to_igv(tmp_path):
     assert out["empty"] is False
 
 
-@pytest.mark.parametrize("sid", ["../victim", "/tmp/abs", "a\\b", "..", ".", "", "a\0b"])
+@pytest.mark.parametrize("sid", ["../victim", "/tmp/abs", "a\\b", "..", ".", "", "a\0b"])  # noqa: S108 -- an absolute path the sample_id must reject, never opened
 def test_sample_id_must_be_a_plain_file_name(tmp_path, sid):
     with pytest.raises(ValueError):
         write_html(PlotInputs(sample_id=sid), tmp_path / "out")
@@ -422,7 +422,6 @@ def test_sample_named_like_the_seg_header_is_not_no_data(tmp_path):
 def test_no_data_segment_tracks_are_tall_enough_for_their_label(tmp_path):
     """PURPLE segment strips are 10 px; when PURPLE was supplied but has no usable segments
     (all copy numbers <= 0) they are labelled "(no data)" and raised to fit the label."""
-    import pandas as pd
     from purple_plotter import PurpleData
     purple = _purple(tmp_path)
     seg0 = purple.seg_df.assign(tumorCopyNumber=0.0)               # to_seg skips CN <= 0

@@ -331,8 +331,8 @@ python3 -c "import json; json.load(open('dxapp.json')); print('valid')"
 
 - **test**: `pytest tests/ -v`, with the runner's preinstalled Chrome for the image-export tests.
 - **lint**: Ruff (`ruff check resources tests`; rules in `pyproject.toml`), zizmor
-  (`zizmor --offline --strict-collection .github/workflows/`) and ShellCheck on `src/code.sh`, `infra/*.sh` and
-  `resources/usr/bin/*`.
+  (`zizmor --offline --strict-collection .github/workflows/`) and ShellCheck 0.11.0 (pinned via
+  `shellcheck-py`) on `src/code.sh`, `infra/*.sh` and `resources/usr/bin/*`.
 - **security**: bandit (fails on HIGH only; Ruff's `S` rules, a subset of bandit's checks, run at
   every severity in the lint job) and
   `pip-audit -r requirements.txt`.
@@ -342,7 +342,7 @@ python3 -c "import json; json.load(open('dxapp.json')); print('valid')"
 ```bash
 uvx ruff@0.17.3 check resources tests
 uvx zizmor@1.31.1 --offline --strict-collection .github/workflows/
-shellcheck src/code.sh infra/*.sh resources/usr/bin/mark-section resources/usr/bin/mark-success
+uvx --from shellcheck-py==0.11.0.1 shellcheck src/code.sh infra/*.sh resources/usr/bin/mark-section resources/usr/bin/mark-success
 ```
 
 ---

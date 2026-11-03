@@ -99,21 +99,65 @@ def load_purple_data(purple_tar: Path) -> PurpleData:
         )
 
 
+class InputError(ValueError):
+    """A supplied input file cannot be used as it is."""
+
+
 def load_qc_data(qc_report: "Path | None") -> QCData:
-    """Parse purity, ploidy, status from qc_report.tsv. None (not supplied) → defaults;
-    a supplied path that does not exist raises FileNotFoundError."""
+    """Parse purity, ploidy and (optional) fit status from the first row of a tab-separated report.
+
+    Accepts PURPLE's final-pass ``{sample}.purple.purity.tsv`` or any compatible report with
+    numeric ``purity`` and ``ploidy`` columns. ``status`` is the fit status supplied by that
+    file (e.g. NORMAL, NO_TUMOR), not a QC verdict; missing or blank → "UNKNOWN".
+    Returns defaults (``loaded=False``) only when no report was supplied. A supplied file that is
+    missing, empty, or lacks numeric purity/ploidy raises InputError — it never silently becomes
+    the no-report fallback.
+    """
     if qc_report is None:
         return QCData()
-    if not str(qc_report) or not Path(qc_report).is_file():
-        raise FileNotFoundError(f"qc_report {str(qc_report)!r} does not exist")
-    row = pd.read_csv(qc_report, sep="\t").iloc[0]
-    val = row.get("status", pd.NA)
-    return QCData(
-        purity = float(row["purity"]),
-        ploidy = float(row["ploidy"]),
-        status = "UNKNOWN" if pd.isna(val) else str(val),
-        loaded = True,
-    )
+    path = Path(qc_report)
+    if not path.is_file():
+        raise InputError(f"qc_report {path} does not exist")
+    try:
+        lines = [ln for ln in path.read_text(encoding="utf-8-sig").splitlines() if ln.strip()]
+    except (OSError, UnicodeDecodeError) as e:
+        raise InputError(f"qc_report {path.name} cannot be read: {e}") from None
+    if not lines:
+        raise InputError(f"qc_report {path.name} is empty")
+    # Plain tab splitting (no quoting rules): a value can never shift under another header,
+    # which pandas allows when a row has more fields than the header.
+    header = [h.strip() for h in lines[0].split("\t")]
+    missing = [c for c in ("purity", "ploidy") if c not in header]
+    if missing:
+        raise InputError(f"qc_report {path.name} has no {'/'.join(missing)} column "
+                         f"(columns: {', '.join(header)}); expected a tab-separated "
+                         "file such as PURPLE's purity.tsv")
+    dupes = sorted({c for c in ("purity", "ploidy", "status") if header.count(c) > 1})
+    if dupes:
+        raise InputError(f"qc_report {path.name} has more than one {'/'.join(dupes)} column")
+    if len(lines) < 2:
+        raise InputError(f"qc_report {path.name} has a header but no data row")
+    fields = lines[1].split("\t")
+    if len(fields) != len(header):
+        raise InputError(f"qc_report {path.name}: first data row has {len(fields)} fields "
+                         f"but the header has {len(header)}")
+    row = dict(zip(header, (f.strip() for f in fields)))
+    values = {}
+    for col in ("purity", "ploidy"):
+        try:
+            values[col] = float(row[col])
+        except ValueError:
+            values[col] = float("nan")
+        if not math.isfinite(values[col]):
+            raise InputError(f"qc_report {path.name}: {col} value {row[col]!r} is not a number")
+    if not 0.0 <= values["purity"] <= 1.0:
+        raise InputError(f"qc_report {path.name}: purity {values['purity']} is outside 0-1")
+    if values["ploidy"] < 0.1:
+        # Segment conversion clamps the denominator at 0.1; a smaller value could not be drawn as given.
+        raise InputError(f"qc_report {path.name}: ploidy {values['ploidy']} is below 0.1")
+    val = row.get("status", "")
+    status = val if val else "UNKNOWN"
+    return QCData(purity=values["purity"], ploidy=values["ploidy"], status=status, loaded=True)
 
 
 def load_msi_data(msi_report: "Path | None") -> MSIData:
@@ -286,7 +330,7 @@ def cns_to_seg(cns_df: pd.DataFrame, sample: str, ploidy: float) -> str:
 
 
 def genemetrics_to_bedgraph(gm_df: pd.DataFrame) -> str:
-    """CNVkit .genemetrics.csv → bedgraph of log₂ values."""
+    """CNVkit genemetrics (tab-separated .genemetrics.tsv / .csv) → bedgraph of log₂ values."""
     lines: list[str] = []
     for chrom in CHR_ORDER:
         sub = gm_df[gm_df["chromosome"] == chrom].sort_values("start")
@@ -313,6 +357,7 @@ body {{ font-family: -apple-system, Arial, sans-serif; background: #f0f2f5; }}
         display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }}
 #hdr .ttl  {{ font-size: 15px; font-weight: 600; }}
 #hdr .meta {{ font-size: 12px; color: #9aafc4; }}
+#hdr .warn {{ font-size: 12px; color: #1a2638; background: #ffd666; border-radius: 3px; padding: 1px 6px; }}
 #igv-div {{ background: white; }}
 .pp-status-line {{ background: white; padding: 8px 18px; font-size: 12px; color: #666; }}
 #pp-status:empty, #pp-status.pp-sr-only {{ position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden;
@@ -330,9 +375,10 @@ body {{ font-family: -apple-system, Arial, sans-serif; background: #f0f2f5; }}
 <div id="hdr">
   <span class="ttl">CNV viewer (bars) — {sample}</span>
   <span class="meta">
-    Purity {purity} &nbsp;·&nbsp; Ploidy {ploidy} &nbsp;·&nbsp; {status}
+    Purity {purity} &nbsp;·&nbsp; Ploidy {ploidy} &nbsp;·&nbsp;
+    <span title="Fit status reported in the supplied purity/ploidy file. It is not a QC pass/fail assessment.">Fit status: {status} (not a QC result)</span>
     &nbsp;·&nbsp; MSI {msi_score} &nbsp;·&nbsp; {msi_status}
-  </span>
+  </span>{ploidy_warning}
 </div>
 <div id="pp-fallback" class="pp-status-line">Loading viewer&#x2026; If this message does not go away, the viewer's scripts did not run (JavaScript disabled or blocked).</div>
 <div id="pp-status" class="pp-status-line" role="status"></div>
@@ -354,7 +400,7 @@ body {{ font-family: -apple-system, Arial, sans-serif; background: #f0f2f5; }}
   <div class="li"><div class="sw" style="background:#08306b"></div><div class="sw" style="background:#8b0000"></div>CNVkit genemetrics (gain / loss)</div>
   <span class="note">
     Coverage y: &#x2212;2&#x2013;+2 &nbsp;&#xb7;&nbsp;
-    Bars y: log&#x2082;(CN/ploidy); 0&#xa0;=&#xa0;diploid &nbsp;&#xb7;&nbsp;
+    Bars y: log&#x2082;(CN/ploidy); 0&#xa0;=&#xa0;CN equal to the ploidy &nbsp;&#xb7;&nbsp;
     CNVkit y: log&#x2082; ratio; 0&#xa0;=&#xa0;diploid &nbsp;&#xb7;&nbsp;
     BAF y: 0&#x2013;1
   </span>
@@ -458,6 +504,14 @@ def json_for_html(obj) -> str:
     return text.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
 
 
+# Shown (and carried into exported images) when no purity/ploidy report was supplied: the
+# CN/ploidy segment tracks then use the QCData default ploidy, which is an assumption.
+PLOIDY_ASSUMED_WARNING = (
+    '\n  <span class="warn">No purity/ploidy report supplied: ploidy {ploidy} is assumed for the '
+    'CN/ploidy segment tracks. This is not a measured ploidy.</span>'
+)
+
+
 def render_html(inputs: "PlotInputs") -> str:
     """Fill HTML_BARS from PlotInputs. Tracks for inputs not supplied are omitted; supplied
     inputs with no rows give empty tracks labelled "(no data)" (see viewer.js)."""
@@ -489,6 +543,8 @@ def render_html(inputs: "PlotInputs") -> str:
     # Header values — show "?" when no QC file was loaded
     purity_str = "?" if not inputs.qc.loaded else f"{inputs.qc.purity:.0%}"
     ploidy_str = "?" if not inputs.qc.loaded else f"{inputs.qc.ploidy:.2f}"
+    status_str = "?" if not inputs.qc.loaded else inputs.qc.status
+    ploidy_warning = "" if inputs.qc.loaded else PLOIDY_ASSUMED_WARNING.format(ploidy=f"{ploidy:.1f}")
 
     # All per-sample values the viewer code reads, in one non-executable JSON block.
     data = {
@@ -528,7 +584,8 @@ def render_html(inputs: "PlotInputs") -> str:
         sample       = _html.escape(sample),                 # <title> and header <span>
         purity       = purity_str,
         ploidy       = ploidy_str,
-        status       = _html.escape(inputs.qc.status),
+        status       = _html.escape(status_str),
+        ploidy_warning = ploidy_warning,
         msi_score    = _html.escape(inputs.msi.score_str),
         msi_status   = _html.escape(inputs.msi.status_str),
         data_json    = json_for_html(data),
@@ -565,10 +622,10 @@ def main() -> None:
     )
     ap.add_argument("--sample",             default=None,   help="Sample ID (required unless --print-script-hashes)")
     ap.add_argument("--purple_tar",         default=None,   help="PURPLE tar.gz archive")
-    ap.add_argument("--qc_report",          default=None,   help="QC report TSV")
+    ap.add_argument("--qc_report",          default=None,   help="Purity/ploidy TSV: PURPLE purity.tsv or compatible (purity, ploidy, optional fit status)")
     ap.add_argument("--cnvkit_cnr",         default=None,   help="CNVkit CNR file")
     ap.add_argument("--cnvkit_call_cns",    default=None,   help="CNVkit called segments")
-    ap.add_argument("--cnvkit_genemetrics", default=None,   help="CNVkit genemetrics CSV")
+    ap.add_argument("--cnvkit_genemetrics", default=None,   help="CNVkit genemetrics, tab-separated (.genemetrics.tsv, or the older .genemetrics.csv)")
     ap.add_argument("--msi_report",         default=None,   help="MSI report TSV")
     ap.add_argument("--locus",              default="all",  help="Initial IGV locus")
     ap.add_argument("--output_dir",         default=".",    help="Output directory")
@@ -606,7 +663,7 @@ def main() -> None:
         msi    = load_msi_data(_path(args.msi_report))
         cnvkit = load_cnvkit_data(
             _path(args.cnvkit_cnr), _path(args.cnvkit_call_cns), _path(args.cnvkit_genemetrics))
-    except FileNotFoundError as e:
+    except (InputError, FileNotFoundError) as e:
         ap.exit(1, f"ERROR: {e}\n")
 
     inputs = PlotInputs(

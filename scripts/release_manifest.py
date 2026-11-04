@@ -79,6 +79,7 @@ IGV_BUNDLED = [
     ("dompurify", rb"@license DOMPurify (\d+\.\d+\.\d+) ", "Apache-2.0 OR MPL-2.0"),
     ("vanilla-picker", rb"/\*!\s*\*\s*vanilla-picker v(\d+\.\d+\.\d+)\s", "ISC"),
     ("pako", rb"/\*! pako (\d+\.\d+\.\d+) ", "MIT AND Zlib"),
+    ("canvas2svg", rb"/\*!!\s*\*\s*Canvas 2 Svg v(\d+\.\d+\.\d+)\s", "MIT"),
 ]
 
 

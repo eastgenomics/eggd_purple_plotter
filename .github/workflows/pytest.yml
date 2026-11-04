@@ -18,8 +18,13 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
         with: { python-version: "3.12" }
+      # Test against the wheels the app ships, not whatever pandas PyPI resolves today.
       # playwright drives the runner's preinstalled Chrome (no browser download) for the image-export tests
-      - run: pip install pandas pytest playwright==1.64.1
+      - name: Install the bundled wheels, then pytest and playwright
+        run: |
+          pip install --no-index --no-deps resources/home/dnanexus/packages/*
+          pip install pytest==9.0.3 playwright==1.64.1
+          python3 scripts/release_manifest.py check-installed   # tools did not replace them
       - name: Require a browser (otherwise the image-export tests would silently skip)
         run: command -v google-chrome || command -v chromium || command -v chromium-browser
       - run: pytest tests/ -v

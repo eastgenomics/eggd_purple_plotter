@@ -368,7 +368,9 @@ python3 -c "import json; json.load(open('dxapp.json')); print('valid')"
 
 `.github/workflows/pytest.yml` runs three jobs on every pull request and on pushes to `main`:
 
-- **test**: `pytest tests/ -v`, with the runner's preinstalled Chrome for the image-export tests.
+- **test**: `pytest tests/ -v` against the bundled wheels (checked with
+  `scripts/release_manifest.py check-installed`), with the runner's preinstalled Chrome for
+  the image-export tests.
 - **lint**: Ruff (`ruff check resources tests scripts`; rules in `pyproject.toml`), zizmor
   (`zizmor --offline --strict-collection .github/workflows/`) and ShellCheck 0.11.0 (pinned via
   `shellcheck-py`) on `src/code.sh`, `infra/*.sh` and `resources/usr/bin/*`.
@@ -393,7 +395,7 @@ writes the artefacts, which are attached to the release (supply chain, CAF A4.a)
 |---|---|
 | `requirements-hashed.txt` | each bundled wheel as `name==version --hash=sha256:` of the shipped file; audited with pip-audit |
 | `asset-requirements.txt` | the Python packages the asset installs (`PINS` in `asset/Makefile`); audited with pip-audit. Taken from the build source at the tagged commit, not read from the asset record |
-| `sbom.json` | CycloneDX SBOM: the app, the bundled wheels, igv.js (with its file hash and the libraries it bundles: DOMPurify, vanilla-picker, pako) and the asset (record ID, its Python packages, and the Chromium and Node.js versions their Playwright pins). It has no dependency graph (marked incomplete), and does not list the asset's Ubuntu libraries or the pip in its venv |
+| `sbom.json` | CycloneDX SBOM: the app, the bundled wheels, igv.js (with its file hash and the libraries it names in licence banners: DOMPurify, vanilla-picker, pako, Canvas 2 Svg) and the asset (record ID, its Python packages, and the Chromium and Node.js versions their Playwright pins). It is marked incomplete: it has no dependency graph, and does not list igv.js's CRAM bundle, native libraries vendored inside wheels (such as NumPy's OpenBLAS), or the asset's Ubuntu libraries and venv pip (#13) |
 
 The release workflow runs after the GitHub release is published, as in the template repo. The
 same audits run in CI on every pull request and push to `main`. Tag only a commit whose CI

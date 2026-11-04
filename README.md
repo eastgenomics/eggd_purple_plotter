@@ -175,8 +175,7 @@ dx run applet-xxxx \
 ```
 
 For a release, build and publish the actual **app** object instead — an applet
-build is dev-only and is not what end users run. Build it from a clean checkout of the release
-tag, and only once per version:
+build is dev-only. Build it from a clean checkout of the release tag:
 
 ```bash
 # If dxapp.json's authorizedUsers or developers differ from the app's, the checks below stop
@@ -220,15 +219,6 @@ echo "published $APP ($APP_VER)"
 
 Then run it as before: `dx run app-eggd_purple_plotter` with the same `-i` arguments as the
 applet example above.
-
-DNAnexus never lets an app version string be used twice, even after an unpublished version is
-deleted. With these flags a second build of the same version fails with `Could not create the
-requested version`. Without them, `dx build --app` either updates the existing unpublished
-version in place (no `--no-update`) or creates a `X.Y.Z+build.<timestamp>` version (no
-`--no-version-autonumbering`). An unpublished `1.1.0` app had been built from a pre-release
-branch, so the code tagged v1.1.0 is released on DNAnexus as v1.1.1. Its runtime code is the
-same as v1.1.0's. Only the version, this README (which `dx build` uses as the app description)
-and a manifest test differ.
 
 ---
 
@@ -418,10 +408,3 @@ v1.0.0: it predates the inlined igv.js, the JSON data block and the CSP (see [Se
 | Instance | `mem1_ssd1_v2_x2` |
 | igv.js | 3.8.3 (embedded) |
 | Genome build | hg38 |
-
-## Sharing outputs by URL
-
-Finished sample HTML outputs can optionally be published to a private S3 bucket fronted
-by CloudFront so they can be shared with others by URL, outside of DNAnexus. See
-[`DEPLOYMENT.md`](DEPLOYMENT.md) for the live URL, resource names, and how to publish a
-new sample.

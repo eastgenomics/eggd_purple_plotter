@@ -38,16 +38,18 @@ jobs:
         run: command -v google-chrome || command -v chromium || command -v chromium-browser
       - name: Run tests
         run: pytest tests/ -v
-      - name: List what the app ships, with hashes (supply chain — CAF A4.a)
+      # Each list is written and audited in its own step, so one failing does not stop the other
+      - name: List the bundled wheels with hashes and audit them (CVE scan — release gate; CAF A4.a)
         run: |
           python3 scripts/release_manifest.py requirements > requirements-hashed.txt
-          python3 scripts/release_manifest.py asset-requirements > asset-requirements.txt
-          cat requirements-hashed.txt asset-requirements.txt
-      - name: Run pip-audit on the bundled wheels (CVE scan — release gate)
-        run: pip-audit -r requirements-hashed.txt --disable-pip --require-hashes
-      - name: Run pip-audit on the asset's Python packages (CVE scan — release gate)
+          cat requirements-hashed.txt
+          pip-audit -r requirements-hashed.txt --disable-pip --require-hashes
+      - name: List the asset's Python packages and audit them (CVE scan — release gate)
         if: ${{ !cancelled() }}
-        run: pip-audit -r asset-requirements.txt --disable-pip --no-deps
+        run: |
+          python3 scripts/release_manifest.py asset-requirements > asset-requirements.txt
+          cat asset-requirements.txt
+          pip-audit -r asset-requirements.txt --disable-pip --no-deps
       - name: Generate SBOM in CycloneDX format (CAF A4.a)
         run: |
           cyclonedx-py requirements requirements-hashed.txt --output-format JSON -o sbom.json

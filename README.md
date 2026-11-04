@@ -200,7 +200,8 @@ git worktree add --detach "$WT" "$COMMIT"
 cd "$WT"
 MANIFEST_NAME=$(jq -er .name dxapp.json)
 test "$MANIFEST_NAME" = eggd_purple_plotter  # the app the checks below query
-CI_PASSED=$(gh run list --commit "$COMMIT" --workflow CI --status success --json databaseId --jq length)
+CI_PASSED=$(gh run list --repo eastgenomics/eggd_purple_plotter --commit "$COMMIT" --workflow CI \
+  --status success --json databaseId --jq length)
 test "$CI_PASSED" -gt 0              # CI (tests, lint, security scans) passed on the tagged commit
 MANIFEST_VER=$(jq -er .version dxapp.json)
 RELEASE_PROP=$(jq -er .properties.githubRelease dxapp.json)

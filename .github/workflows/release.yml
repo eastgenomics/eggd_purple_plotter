@@ -52,6 +52,14 @@ jobs:
         run: |
           cyclonedx-py requirements requirements-hashed.txt --output-format JSON -o sbom.json
           python3 scripts/release_manifest.py extend-sbom sbom.json
+      - name: Validate the SBOM against the CycloneDX 1.6 schema
+        shell: python
+        run: |
+          from cyclonedx.schema import SchemaVersion
+          from cyclonedx.validation.json import JsonStrictValidator
+          error = JsonStrictValidator(SchemaVersion.V1_6).validate_str(open("sbom.json").read())
+          if error is not None:
+              raise SystemExit(f"sbom.json is not valid CycloneDX 1.6: {error}")
       - name: Upload release artefacts (retained 90 days)
         uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b  # v4.5.0
         with:

@@ -189,6 +189,11 @@ MANIFEST_VER=$(jq -er .version dxapp.json)
 RELEASE_PROP=$(jq -er .properties.githubRelease dxapp.json)
 test "$MANIFEST_VER" = "$VER"        # manifest matches the tag
 test "$RELEASE_PROP" = "$VER"
+# dx build applies dxapp.json's authorizedUsers to the whole app, including published
+# versions, so stop first if they differ (change them deliberately, not as a side effect)
+LIVE_USERS=$(dx api app-eggd_purple_plotter listAuthorizedUsers | jq -ec '.authorizedUsers | sort')
+MANIFEST_USERS=$(jq -ec '.authorizedUsers | sort' dxapp.json)
+test "$LIVE_USERS" = "$MANIFEST_USERS"
 # --yes applies the manifest's developer list; without it a piped build skips that change
 APP=$(dx build --app --no-update --no-version-autonumbering --yes | jq -er .id)  # add --bill-to <org> if needed;
                                      # logs go to stderr, stdout is {"id": "app-…"}

@@ -43,10 +43,11 @@ jobs:
           python3 scripts/release_manifest.py requirements > requirements-hashed.txt
           python3 scripts/release_manifest.py asset-requirements > asset-requirements.txt
           cat requirements-hashed.txt asset-requirements.txt
-      - name: Run pip-audit on the bundled wheels and the asset's packages (CVE scan — release gate)
-        run: |
-          pip-audit -r requirements-hashed.txt --disable-pip --require-hashes
-          pip-audit -r asset-requirements.txt --disable-pip --no-deps
+      - name: Run pip-audit on the bundled wheels (CVE scan — release gate)
+        run: pip-audit -r requirements-hashed.txt --disable-pip --require-hashes
+      - name: Run pip-audit on the asset's Python packages (CVE scan — release gate)
+        if: ${{ !cancelled() }}
+        run: pip-audit -r asset-requirements.txt --disable-pip --no-deps
       - name: Generate SBOM in CycloneDX format (CAF A4.a)
         run: |
           cyclonedx-py requirements requirements-hashed.txt --output-format JSON -o sbom.json

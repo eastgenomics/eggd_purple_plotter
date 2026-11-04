@@ -89,6 +89,8 @@ def test_extend_sbom_adds_app_igv_and_asset():
     assert purify["name"] == "dompurify" and re.fullmatch(r"\d+\.\d+\.\d+", purify["version"])
     (record,) = [d["id"] for d in app["runSpec"]["assetDepends"]]
     assert {"name": "dnanexus:record", "value": record} in asset["properties"]
+    (source,) = [p["value"] for p in asset["properties"] if p["name"] == "inventory:source"]
+    assert "not verified" in source
     parts = {c["name"]: c for c in asset["components"]}
     assert parts["playwright"]["version"] == dict(rm.asset_pins())["playwright"]
     assert re.fullmatch(r"\d+(\.\d+){3}", parts["chromium-headless-shell"]["version"])

@@ -26,13 +26,17 @@ jobs:
         id: pip_audit
         continue-on-error: true
         run: pip-audit -r requirements.txt
-      - name: Run pip-audit on what the app ships (bundled wheels, asset packages)
-        id: pip_audit_shipped
+      - name: Run pip-audit on the bundled wheels the app ships
+        id: pip_audit_wheels
         continue-on-error: true
         run: |
           python3 scripts/release_manifest.py requirements > "$RUNNER_TEMP/shipped-requirements.txt"
-          python3 scripts/release_manifest.py asset-requirements > "$RUNNER_TEMP/asset-requirements.txt"
           pip-audit -r "$RUNNER_TEMP/shipped-requirements.txt" --disable-pip --require-hashes
+      - name: Run pip-audit on the asset's Python packages
+        id: pip_audit_asset
+        continue-on-error: true
+        run: |
+          python3 scripts/release_manifest.py asset-requirements > "$RUNNER_TEMP/asset-requirements.txt"
           pip-audit -r "$RUNNER_TEMP/asset-requirements.txt" --disable-pip --no-deps
       # trivy-action's own installer (setup-trivy) downloads from get.trivy.dev, which does not
       # resolve (curl exit 6, from 4 Nov 2026). Install the same Trivy release from GitHub,
@@ -68,7 +72,10 @@ jobs:
         with:
           sarif_file: trivy.sarif
       - name: Fail if pip-audit found vulnerabilities
-        if: always() && (steps.pip_audit.outcome == 'failure' || steps.pip_audit_shipped.outcome == 'failure')
+        if: >-
+          always() && (steps.pip_audit.outcome == 'failure'
+          || steps.pip_audit_wheels.outcome == 'failure'
+          || steps.pip_audit_asset.outcome == 'failure')
         run: |
           echo "pip-audit detected vulnerabilities — see results above"
           exit 1

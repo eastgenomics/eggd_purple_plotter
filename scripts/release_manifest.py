@@ -149,7 +149,10 @@ def extend_sbom(sbom: dict) -> dict:
         "version": asset["version"],
         "description": f"DNAnexus asset {dep['id']}: {asset['description']}",
         "properties": [{"name": "dnanexus:record", "value": dep["id"]},
-                       {"name": "dnanexus:release", "value": f"{asset['distribution']} {asset['release']}"}],
+                       {"name": "dnanexus:release", "value": f"{asset['distribution']} {asset['release']}"},
+                       {"name": "inventory:source",
+                        "value": "asset/Makefile and asset/dxasset.json at this commit; expected "
+                                 "contents of the record, not verified against it"}],
         "components": [
             {"type": "library", "bom-ref": f"asset/{n}", "name": n, "version": v,
              "purl": f"pkg:pypi/{n}@{v}"}

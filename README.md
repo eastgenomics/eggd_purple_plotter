@@ -198,6 +198,8 @@ git worktree add --detach "$WT" "$COMMIT"
 cd "$WT"
 MANIFEST_NAME=$(jq -er .name dxapp.json)
 test "$MANIFEST_NAME" = eggd_purple_plotter  # the app the checks below query
+CI_PASSED=$(gh run list --commit "$COMMIT" --workflow CI --status success --json databaseId --jq length)
+test "$CI_PASSED" -gt 0              # CI (tests, lint, security scans) passed on the tagged commit
 MANIFEST_VER=$(jq -er .version dxapp.json)
 RELEASE_PROP=$(jq -er .properties.githubRelease dxapp.json)
 test "$MANIFEST_VER" = "$VER"        # manifest matches the tag
@@ -390,12 +392,13 @@ writes the artefacts, which are attached to the release (supply chain, CAF A4.a)
 | Artefact | Contents |
 |---|---|
 | `requirements-hashed.txt` | each bundled wheel as `name==version --hash=sha256:` of the shipped file; audited with pip-audit |
-| `asset-requirements.txt` | the Python packages the asset installs (`PINS` in `asset/Makefile`); audited with pip-audit |
+| `asset-requirements.txt` | the Python packages the asset installs (`PINS` in `asset/Makefile`); audited with pip-audit. Taken from the build source at the tagged commit, not read from the asset record |
 | `sbom.json` | CycloneDX SBOM: the app, the bundled wheels, igv.js (with its file hash and the DOMPurify it bundles) and the asset (record ID, its Python packages and the Chromium version their Playwright pins). The Ubuntu libraries the asset installs are not listed |
 
 The release workflow runs after the GitHub release is published, as in the template repo. The
-same audits already run on every pull request and push to `main`, so a tagged commit has
-passed them; publish the DNAnexus app only after that commit's CI is green.
+same audits run in CI on every pull request and push to `main`. Tag only a commit whose CI
+run passed; the DNAnexus release procedure above checks this for the tagged commit before
+building.
 
 To run the lint job locally:
 

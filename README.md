@@ -189,10 +189,14 @@ MANIFEST_VER=$(jq -er .version dxapp.json)
 RELEASE_PROP=$(jq -er .properties.githubRelease dxapp.json)
 test "$MANIFEST_VER" = "$VER"        # manifest matches the tag
 test "$RELEASE_PROP" = "$VER"
-APP=$(dx build --app --no-update --no-version-autonumbering | jq -er .id)  # add --bill-to <org> if needed;
+# --yes applies the manifest's developer list; without it a piped build skips that change
+APP=$(dx build --app --no-update --no-version-autonumbering --yes | jq -er .id)  # add --bill-to <org> if needed;
                                      # logs go to stderr, stdout is {"id": "app-…"}
 APP_VER=$(dx describe "$APP" --json | jq -er .version)
 test "$APP_VER" = "$VER"             # exactly X.Y.Z, no suffix
+APP_DEVS=$(dx api app-eggd_purple_plotter listDevelopers | jq -ec '.developers | sort')
+MANIFEST_DEVS=$(jq -ec '.developers | sort' dxapp.json)
+test "$APP_DEVS" = "$MANIFEST_DEVS"  # developers on DNAnexus match dxapp.json
 dx publish "$APP"                    # makes it available to authorizedUsers
 dx run app-eggd_purple_plotter ...   # same -i args as above
 ```

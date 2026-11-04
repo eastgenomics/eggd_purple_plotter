@@ -77,7 +77,8 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/trivy" --version
       - name: Scan the SBOM with Trivy (npm and PyPI components; release gate)
-        run: trivy sbom --severity HIGH,CRITICAL --exit-code 1 sbom.json
+        # .trivyignore.yaml holds time-limited, governance-recorded exceptions (see its comments)
+        run: trivy sbom --severity HIGH,CRITICAL --exit-code 1 --ignorefile .trivyignore.yaml sbom.json
       - name: Upload release artefacts (retained 90 days)
         uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b  # v4.5.0
         with:

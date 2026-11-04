@@ -57,6 +57,7 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           skip-setup-trivy: true
+          trivyignores: .trivyignore.yaml
           scan-type: fs
           scanners: vuln,misconfig,secret
           severity: HIGH,CRITICAL
@@ -78,7 +79,7 @@ jobs:
           python3 scripts/release_manifest.py requirements > "$RUNNER_TEMP/shipped-requirements.txt"
           cyclonedx-py requirements "$RUNNER_TEMP/shipped-requirements.txt" --output-format JSON -o "$RUNNER_TEMP/sbom.json"
           python3 scripts/release_manifest.py extend-sbom "$RUNNER_TEMP/sbom.json"
-          trivy sbom --severity HIGH,CRITICAL --exit-code 1 "$RUNNER_TEMP/sbom.json"
+          trivy sbom --severity HIGH,CRITICAL --exit-code 1 --ignorefile .trivyignore.yaml "$RUNNER_TEMP/sbom.json"
       - name: Fail if pip-audit or the SBOM scan found vulnerabilities
         if: >-
           always() && (steps.pip_audit.outcome == 'failure'

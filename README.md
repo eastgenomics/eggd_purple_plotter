@@ -400,6 +400,11 @@ writes the artefacts, which are attached to the release (supply chain, CAF A4.a)
 | `asset-requirements.txt` | the Python packages the asset installs (`PINS` in `asset/Makefile`); audited with pip-audit. Taken from the build source at the tagged commit, not read from the asset record |
 | `sbom.json` | CycloneDX SBOM: the app, the bundled wheels, igv.js (with its file hash and the libraries it names in licence banners: DOMPurify, vanilla-picker, pako, Canvas 2 Svg) and the asset (record ID, its Python packages, and the Chromium and Node.js versions their Playwright pins). It is marked incomplete: it has no dependency graph, and does not list igv.js's CRAM bundle, native libraries vendored inside wheels (such as NumPy's OpenBLAS), or the asset's Ubuntu libraries and venv pip (#13) |
 
+Accepted exceptions live in `.trivyignore.yaml`. Each entry names its governance record
+(GOVR hazard) and has an `expired_at` date; once it passes, the release and weekly scans fail
+again. Current entries: two DOMPurify advisories in the igv.js bundle, accepted until
+2027-02-04 (GOVR-14; upgrade in #14).
+
 What is checked for known vulnerabilities: the bundled wheels and the asset's Python packages
 (pip-audit, and Trivy through the SBOM), and the libraries igv.js bundles (Trivy, as npm
 packages in the SBOM). Chromium and Node.js are listed with versions but are not matched

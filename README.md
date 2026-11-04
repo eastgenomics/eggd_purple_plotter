@@ -382,7 +382,7 @@ python3 -c "import json; json.load(open('dxapp.json')); print('valid')"
   app ships: the bundled wheels and the asset's Python packages (lists from
   `scripts/release_manifest.py`, below).
 
-`scheduled-scan.yml` also runs the same pip-audit scans and Trivy (dependencies, misconfiguration and secrets,
+`scheduled-scan.yml` also runs the same pip-audit scans, a Trivy scan of the SBOM described below, and Trivy (dependencies, misconfiguration and secrets,
 failing on HIGH or CRITICAL) every Monday. GitHub disables a scheduled workflow after 60 days
 with no repository activity; re-enable it under Actions if that happens. It installs Trivy
 itself (pinned release, SHA-256 checked) because the action's installer currently fails.
@@ -399,6 +399,11 @@ writes the artefacts, which are attached to the release (supply chain, CAF A4.a)
 | `requirements-hashed.txt` | each bundled wheel as `name==version --hash=sha256:` of the shipped file; audited with pip-audit |
 | `asset-requirements.txt` | the Python packages the asset installs (`PINS` in `asset/Makefile`); audited with pip-audit. Taken from the build source at the tagged commit, not read from the asset record |
 | `sbom.json` | CycloneDX SBOM: the app, the bundled wheels, igv.js (with its file hash and the libraries it names in licence banners: DOMPurify, vanilla-picker, pako, Canvas 2 Svg) and the asset (record ID, its Python packages, and the Chromium and Node.js versions their Playwright pins). It is marked incomplete: it has no dependency graph, and does not list igv.js's CRAM bundle, native libraries vendored inside wheels (such as NumPy's OpenBLAS), or the asset's Ubuntu libraries and venv pip (#13) |
+
+What is checked for known vulnerabilities: the bundled wheels and the asset's Python packages
+(pip-audit, and Trivy through the SBOM), and the libraries igv.js bundles (Trivy, as npm
+packages in the SBOM). Chromium and Node.js are listed with versions but are not matched
+against a vulnerability database; they change only when the asset's Playwright pin changes.
 
 The release workflow runs after the GitHub release is published, as in the template repo. The
 same audits run in CI on every pull request and push to `main`. Tag only a commit whose CI

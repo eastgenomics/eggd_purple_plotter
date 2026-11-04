@@ -59,6 +59,8 @@ def asset_pins() -> list[tuple[str, str]]:
     if not m:
         raise ValueError("no PINS= line in asset/Makefile")
     pins = []
+    if not m[1].split():
+        raise ValueError("PINS= in asset/Makefile lists no packages")
     for spec in m[1].split():
         name, sep, version = spec.partition("==")
         if not sep or not name or not version:
@@ -158,6 +160,8 @@ def extend_sbom(sbom: dict) -> dict:
         "type": "application", "bom-ref": "app", "name": app["name"], "version": app["version"],
         "description": "DNAnexus app",
     }
+    # Every component is top level: scanners such as Trivy ignore nested components.
+    # "bundled-in" says where a library actually lives.
     components = sbom.setdefault("components", [])
     components.append({
         "type": "library", "bom-ref": "igv.js", "name": "igv", "version": igv_version,
@@ -165,12 +169,12 @@ def extend_sbom(sbom: dict) -> dict:
         "hashes": [{"alg": "SHA-256", "content": sha256(IGV_JS)}],
         "licenses": [{"license": {"id": "MIT"}}],
         "description": "igv.min.js, embedded in every generated viewer",
-        "components": [{
-            "type": "library", "bom-ref": f"igv.js/{n}@{v}", "name": n, "version": v,
-            "purl": f"pkg:npm/{n}@{v}", "licenses": [{"expression": lic}],
-            "description": "bundled inside igv.min.js",
-        } for n, v, lic in bundled],
     })
+    components += [{
+        "type": "library", "bom-ref": f"igv.js/{n}@{v}", "name": n, "version": v,
+        "purl": f"pkg:npm/{n}@{v}", "licenses": [{"expression": lic}],
+        "properties": [{"name": "bundled-in", "value": "igv.js"}],
+    } for n, v, lic in bundled]
     components.append({
         "type": "application", "bom-ref": "asset", "name": asset["name"],
         "version": asset["version"],
@@ -180,24 +184,26 @@ def extend_sbom(sbom: dict) -> dict:
                        {"name": "inventory:source",
                         "value": "asset/Makefile and asset/dxasset.json at this commit; expected "
                                  "contents of the record, not verified against it"}],
-        "components": [
-            {"type": "library", "bom-ref": f"asset/{n}", "name": n, "version": v,
-             "purl": f"pkg:pypi/{n}@{v}"}
-            for n, v in asset_pins()
-        ] + [{
-            "type": "application", "bom-ref": "asset/chromium-headless-shell",
-            "name": "chromium-headless-shell", "version": chromium,
-            "cpe": f"cpe:2.3:a:google:chrome:{chromium}:*:*:*:*:*:*:*",
-            "description": "installed by the asset's Playwright (playwright install --only-shell "
-                           "chromium); version from that Playwright release's browsers.json. "
-                           "The Ubuntu libraries it needs (playwright install-deps) are not listed",
-        }, {
-            "type": "application", "bom-ref": "asset/node", "name": "node", "version": node,
-            "purl": f"pkg:generic/node@{node}",
-            "cpe": f"cpe:2.3:a:nodejs:node.js:{node}:*:*:*:*:*:*:*",
-            "description": "Node.js runtime bundled with the asset's Playwright (driver/node)",
-        }],
     })
+    in_asset = [{"name": "bundled-in", "value": f"{asset['name']} {dep['id']}"}]
+    components += [
+        {"type": "library", "bom-ref": f"asset/{n}", "name": n, "version": v,
+         "purl": f"pkg:pypi/{n}@{v}", "properties": in_asset}
+        for n, v in asset_pins()
+    ]
+    components += [{
+        "type": "application", "bom-ref": "asset/chromium-headless-shell",
+        "name": "chromium-headless-shell", "version": chromium,
+        "cpe": f"cpe:2.3:a:google:chrome:{chromium}:*:*:*:*:*:*:*", "properties": in_asset,
+        "description": "installed by the asset's Playwright (playwright install --only-shell "
+                       "chromium); version from that Playwright release's browsers.json. "
+                       "The Ubuntu libraries it needs (playwright install-deps) are not listed",
+    }, {
+        "type": "application", "bom-ref": "asset/node", "name": "node", "version": node,
+        "purl": f"pkg:generic/node@{node}",
+        "cpe": f"cpe:2.3:a:nodejs:node.js:{node}:*:*:*:*:*:*:*", "properties": in_asset,
+        "description": "Node.js runtime bundled with the asset's Playwright (driver/node)",
+    }]
     # cyclonedx-py lists every requirement as a leaf with no dependencies, which is not true
     # (pandas needs numpy, ...). Drop that graph and say the inventory is incomplete.
     sbom.pop("dependencies", None)

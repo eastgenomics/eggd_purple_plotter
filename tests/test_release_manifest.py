@@ -82,10 +82,13 @@ def test_extend_sbom_adds_app_igv_and_asset():
     app = json.loads(rm.DXAPP.read_text())
     assert sbom["metadata"]["component"]["name"] == app["name"]
     assert sbom["metadata"]["component"]["version"] == app["version"]
-    igv, asset = sbom["components"]
+    by_ref = {c["bom-ref"]: c for c in sbom["components"]}
+    igv, asset = by_ref["igv.js"], by_ref["asset"]
     assert igv["version"] == rm.igv_js_version()
     assert igv["hashes"][0]["content"] == hashlib.sha256(rm.IGV_JS.read_bytes()).hexdigest()
-    bundled = {(c["name"], c["version"]) for c in igv["components"]}
+    assert all("components" not in c for c in sbom["components"])   # Trivy skips nested ones
+    bundled = {(c["name"], c["version"]) for c in sbom["components"]
+               if {"name": "bundled-in", "value": "igv.js"} in c.get("properties", [])}
     assert {n for n, _ in bundled} == {"dompurify", "vanilla-picker", "pako", "canvas2svg"}
     assert all(re.fullmatch(r"\d+\.\d+\.\d+", v) for _, v in bundled)
     assert "dependencies" not in sbom and sbom["compositions"] == [{"aggregate": "incomplete"}]
@@ -93,10 +96,30 @@ def test_extend_sbom_adds_app_igv_and_asset():
     assert {"name": "dnanexus:record", "value": record} in asset["properties"]
     (source,) = [p["value"] for p in asset["properties"] if p["name"] == "inventory:source"]
     assert "not verified" in source
-    parts = {c["name"]: c for c in asset["components"]}
+    parts = {c["name"]: c for c in sbom["components"]
+             if any(p["name"] == "bundled-in" and record in p["value"]
+                    for p in c.get("properties", []))}
     assert parts["playwright"]["version"] == dict(rm.asset_pins())["playwright"]
+    assert parts["playwright"]["purl"] == f"pkg:pypi/playwright@{parts['playwright']['version']}"
     assert re.fullmatch(r"\d+(\.\d+){3}", parts["chromium-headless-shell"]["version"])
     assert re.fullmatch(r"\d+\.\d+\.\d+", parts["node"]["version"])
+
+
+def test_bundled_npm_purls_carry_their_versions():
+    pytest.importorskip("playwright")
+    sbom = rm.extend_sbom({"bomFormat": "CycloneDX", "components": []})
+    for c in sbom["components"]:
+        if c.get("purl", "").startswith("pkg:npm/"):
+            assert c["purl"] == f"pkg:npm/{c['name']}@{c['version']}"
+
+
+@pytest.mark.parametrize("line", ["PINS=", "PINS=   "])
+def test_empty_asset_pins_are_an_error(tmp_path, monkeypatch, line):
+    mk = tmp_path / "Makefile"
+    mk.write_text(f"VENV=/opt/x\n{line}\n")
+    monkeypatch.setattr(rm, "ASSET_MAKEFILE", mk)
+    with pytest.raises(ValueError, match="no PINS=|lists no packages"):
+        rm.asset_pins()
 
 
 def test_igv_bundled_libraries_are_found_by_banner():

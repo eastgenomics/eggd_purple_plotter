@@ -179,13 +179,22 @@ build is dev-only and is not what end users run. Build it from a clean checkout 
 tag, and only once per version:
 
 ```bash
+# If dxapp.json's authorizedUsers or developers differ from the app's, the checks below stop
+# the release. dx build would otherwise apply them to the whole app, including published
+# versions, so change them deliberately first, for example:
+#   dx remove developers app-eggd_purple_plotter user-<name>
+#   dx add developers    app-eggd_purple_plotter org-<name>
+#   dx add users / dx remove users app-eggd_purple_plotter <user-or-org>
+# Make no permission changes while the release build runs.
+
+(                                    # subshell: the EXIT trap fires when this block ends
 set -euo pipefail                    # stop at the first failing step
 TAG=vX.Y.Z; VER=${TAG#v}
 [[ $TAG =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]  # plain vX.Y.Z, no suffix
 COMMIT=$(git rev-parse --verify "refs/tags/$TAG^{commit}")  # must be a tag, not a branch
 REPO=$(pwd)
-WT=$(mktemp -d)                      # fresh worktree each attempt, removed on exit
-trap 'cd "$REPO" && git worktree remove --force "$WT"' EXIT
+WT=$(mktemp -d)                      # fresh worktree each attempt, removed when the block ends
+trap 'cd "$REPO"; git worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"' EXIT
 git worktree add --detach "$WT" "$COMMIT"
 cd "$WT"
 MANIFEST_NAME=$(jq -er .name dxapp.json)
@@ -194,10 +203,6 @@ MANIFEST_VER=$(jq -er .version dxapp.json)
 RELEASE_PROP=$(jq -er .properties.githubRelease dxapp.json)
 test "$MANIFEST_VER" = "$VER"        # manifest matches the tag
 test "$RELEASE_PROP" = "$VER"
-# dx build applies dxapp.json's authorizedUsers and developers to the whole app, including
-# published versions. Stop here if either differs (and make no permission changes while a
-# release build runs); change them deliberately first with
-# dx api app-eggd_purple_plotter {add,remove}{AuthorizedUsers,Developers} '{"…": [...]}'
 LIVE_USERS=$(dx api app-eggd_purple_plotter listAuthorizedUsers | jq -ec '.authorizedUsers | sort')
 LIVE_DEVS=$(dx api app-eggd_purple_plotter listDevelopers | jq -ec '.developers | sort')
 MANIFEST_USERS=$(jq -ec '.authorizedUsers | sort' dxapp.json)
@@ -209,8 +214,12 @@ APP=$(dx build --app --no-update --no-version-autonumbering --yes | jq -er .id) 
 APP_VER=$(dx describe "$APP" --json | jq -er .version)
 test "$APP_VER" = "$VER"             # exactly X.Y.Z, no suffix
 dx publish "$APP"                    # makes it available to authorizedUsers
-dx run app-eggd_purple_plotter ...   # same -i args as above
+echo "published $APP ($APP_VER)"
+)
 ```
+
+Then run it as before: `dx run app-eggd_purple_plotter` with the same `-i` arguments as the
+applet example above.
 
 DNAnexus never lets an app version string be used twice, even after an unpublished version is
 deleted. With these flags a second build of the same version fails with `Could not create the
@@ -218,8 +227,8 @@ requested version`. Without them, `dx build --app` either updates the existing u
 version in place (no `--no-update`) or creates a `X.Y.Z+build.<timestamp>` version (no
 `--no-version-autonumbering`). An unpublished `1.1.0` app had been built from a pre-release
 branch, so the code tagged v1.1.0 is released on DNAnexus as v1.1.1. Its runtime code is the
-same as v1.1.0's; only the version and this README (which `dx build` uses as the app
-description) differ.
+same as v1.1.0's. Only the version, this README (which `dx build` uses as the app description)
+and a manifest test differ.
 
 ---
 

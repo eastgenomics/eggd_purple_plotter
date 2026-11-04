@@ -179,11 +179,17 @@ build is dev-only and is not what end users run. Build it from a clean checkout 
 tag, and only once per version:
 
 ```bash
-git worktree add --detach /tmp/release vX.Y.Z && cd /tmp/release
-dx build --app --no-update --no-version-autonumbering   # -> app-xxxx
-dx describe app-xxxx --json | jq -r .version            # must be exactly X.Y.Z
-dx publish app-xxxx                  # makes it available to authorizedUsers
-dx run app-eggd_purple_plotter ...    # same -i args as above
+set -euo pipefail                    # every step must succeed before the next runs
+TAG=vX.Y.Z; VER=${TAG#v}
+git worktree add --detach /tmp/release "$TAG"
+cd /tmp/release
+test "$(jq -r .version dxapp.json)" = "$VER"                 # manifest matches the tag
+test "$(jq -r .properties.githubRelease dxapp.json)" = "$VER"
+APP=$(dx build --app --no-update --no-version-autonumbering | jq -r .id)  # add --bill-to <org> if needed;
+                                     # logs go to stderr, stdout is {"id": "app-…"}
+test "$(dx describe "$APP" --json | jq -r .version)" = "$VER" # exactly X.Y.Z, no suffix
+dx publish "$APP"                    # makes it available to authorizedUsers
+dx run app-eggd_purple_plotter ...   # same -i args as above
 ```
 
 DNAnexus never lets an app version string be used twice, even after an unpublished version is

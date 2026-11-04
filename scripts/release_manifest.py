@@ -7,9 +7,13 @@ pp_headless_chromium asset (pinned by record ID in dxapp.json) for image export.
 
   release_manifest.py requirements        shipped wheels as name==version --hash=sha256:...
   release_manifest.py asset-requirements  Python packages installed in the asset (asset/Makefile PINS)
+  release_manifest.py check-installed     fail unless this Python has exactly the shipped versions
   release_manifest.py extend-sbom FILE    add the app, igv.js and the asset to a CycloneDX JSON SBOM
+                                          (needs the asset's Playwright version installed, to read
+                                          the Chromium version it pins)
 """
 import hashlib
+import importlib.metadata
 import json
 import re
 import sys
@@ -32,12 +36,15 @@ def sha256(path: Path) -> str:
 
 
 def shipped_wheels() -> list[tuple[str, str, str]]:
-    """(name, version, sha256) for every bundled wheel, sorted by name."""
+    """(name, version, sha256) for every bundled wheel, sorted by name.
+
+    src/code.sh installs every non-hidden entry of the packages directory, so anything there
+    that is not a wheel is an error rather than something to leave out of the inventory."""
     wheels = []
-    for whl in sorted(PACKAGES.glob("*.whl")):
-        m = WHEEL.match(whl.name)
+    for whl in sorted(f for f in PACKAGES.iterdir() if not f.name.startswith(".")):
+        m = WHEEL.match(whl.name) if whl.is_file() else None
         if not m:
-            raise ValueError(f"not a wheel file name: {whl.name}")
+            raise ValueError(f"not a wheel file: {whl.name}")
         name = re.sub(r"[-_.]+", "-", m["name"]).lower()
         wheels.append((name, m["version"], sha256(whl)))
     if not wheels:
@@ -66,6 +73,40 @@ def igv_js_version() -> str:
     return m[1]
 
 
+def dompurify_version() -> str:
+    """The DOMPurify release bundled inside igv.min.js, from its licence banner."""
+    m = re.search(rb"@license DOMPurify (\d+\.\d+\.\d+) ", IGV_JS.read_bytes())
+    if not m:
+        raise ValueError("no DOMPurify licence banner in igv.min.js")
+    return m[1].decode()
+
+
+def chromium_version() -> str:
+    """Chromium headless shell version pinned by the asset's Playwright release."""
+    (playwright,) = [v for n, v in asset_pins() if n == "playwright"]
+    installed = importlib.metadata.version("playwright")
+    if installed != playwright:
+        raise ValueError(f"asset pins playwright {playwright}, this Python has {installed}")
+    import playwright as pw
+    browsers = json.loads((Path(pw.__file__).parent / "driver/package/browsers.json").read_text())
+    (shell,) = [b for b in browsers["browsers"] if b["name"] == "chromium-headless-shell"]
+    return shell["browserVersion"]
+
+
+def check_installed() -> None:
+    """Raise unless every shipped wheel's version is the one installed here."""
+    wrong = []
+    for name, version, _ in shipped_wheels():
+        try:
+            have = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            have = None
+        if have != version:
+            wrong.append(f"{name}: ships {version}, installed {have}")
+    if wrong:
+        raise ValueError("test environment differs from what ships: " + "; ".join(wrong))
+
+
 def requirements() -> str:
     return "".join(f"{n}=={v} --hash=sha256:{h}\n" for n, v, h in shipped_wheels())
 
@@ -83,6 +124,8 @@ def extend_sbom(sbom: dict) -> dict:
         raise ValueError(f"dxapp.json pins {asset['name']} {dep['version']}, "
                          f"asset/dxasset.json is {asset['version']}")
     igv_version = igv_js_version()
+    purify = dompurify_version()
+    chromium = chromium_version()
     sbom.setdefault("metadata", {})["component"] = {
         "type": "application", "bom-ref": "app", "name": app["name"], "version": app["version"],
         "description": "DNAnexus app",
@@ -93,8 +136,13 @@ def extend_sbom(sbom: dict) -> dict:
         "purl": f"pkg:npm/igv@{igv_version}",
         "hashes": [{"alg": "SHA-256", "content": sha256(IGV_JS)}],
         "licenses": [{"license": {"id": "MIT"}}],
-        "description": "igv.min.js, embedded in every generated viewer; includes DOMPurify "
-                       "(Apache-2.0 / MPL-2.0)",
+        "description": "igv.min.js, embedded in every generated viewer",
+        "components": [{
+            "type": "library", "bom-ref": "igv.js/dompurify", "name": "dompurify",
+            "version": purify, "purl": f"pkg:npm/dompurify@{purify}",
+            "licenses": [{"expression": "Apache-2.0 OR MPL-2.0"}],
+            "description": "bundled inside igv.min.js",
+        }],
     })
     components.append({
         "type": "application", "bom-ref": "asset", "name": asset["name"],
@@ -108,10 +156,11 @@ def extend_sbom(sbom: dict) -> dict:
             for n, v in asset_pins()
         ] + [{
             "type": "application", "bom-ref": "asset/chromium-headless-shell",
-            "name": "chromium-headless-shell",
-            "description": "Chromium build installed by the asset's Playwright "
-                           "(playwright install --only-shell chromium); its version is the "
-                           "one that Playwright release pins",
+            "name": "chromium-headless-shell", "version": chromium,
+            "cpe": f"cpe:2.3:a:google:chrome:{chromium}:*:*:*:*:*:*:*",
+            "description": "installed by the asset's Playwright (playwright install --only-shell "
+                           "chromium); version from that Playwright release's browsers.json. "
+                           "The Ubuntu libraries it needs (playwright install-deps) are not listed",
         }],
     })
     return sbom
@@ -122,6 +171,8 @@ def main(argv: list[str]) -> int:
         sys.stdout.write(requirements())
     elif argv == ["asset-requirements"]:
         sys.stdout.write(asset_requirements())
+    elif argv == ["check-installed"]:
+        check_installed()
     elif len(argv) == 2 and argv[0] == "extend-sbom":
         path = Path(argv[1])
         path.write_text(json.dumps(extend_sbom(json.loads(path.read_text())), indent=2) + "\n")

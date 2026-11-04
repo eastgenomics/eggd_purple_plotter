@@ -13,6 +13,7 @@ concurrency:
 jobs:
   release-artefacts:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     permissions:
       contents: write  # gh release upload attaches the artefacts to the release
     steps:
@@ -28,8 +29,11 @@ jobs:
         run: |
           MANIFEST_VER=$(jq -er .version dxapp.json)
           test "v$MANIFEST_VER" = "$RELEASE_TAG"
-      - name: Install test and release tools
-        run: pip install pandas pytest playwright==1.64.1 pip-audit==2.10.1 cyclonedx-bom==7.3.0
+      - name: Install the wheels the app ships, then pinned test and release tools
+        run: |
+          pip install --no-index --no-deps resources/home/dnanexus/packages/*
+          pip install pytest==9.0.3 playwright==1.64.1 pip-audit==2.10.1 cyclonedx-bom==7.3.0
+          python3 scripts/release_manifest.py check-installed   # tools did not replace them
       - name: Require a browser (otherwise the image-export tests would silently skip)
         run: command -v google-chrome || command -v chromium || command -v chromium-browser
       - name: Run tests

@@ -67,3 +67,10 @@ jobs:
       - name: Run pip-audit (CVE scan) — fail on any finding
         if: always()
         run: pip-audit -r requirements.txt
+      - name: Run pip-audit on what the app ships (bundled wheels, asset packages)
+        if: always()
+        run: |
+          python3 scripts/release_manifest.py requirements > shipped-requirements.txt
+          python3 scripts/release_manifest.py asset-requirements > asset-requirements.txt
+          pip-audit -r shipped-requirements.txt --disable-pip --require-hashes
+          pip-audit -r asset-requirements.txt --disable-pip --no-deps

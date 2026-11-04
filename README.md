@@ -371,16 +371,18 @@ python3 -c "import json; json.load(open('dxapp.json')); print('valid')"
   (`zizmor --offline --strict-collection .github/workflows/`) and ShellCheck 0.11.0 (pinned via
   `shellcheck-py`) on `src/code.sh`, `infra/*.sh` and `resources/usr/bin/*`.
 - **security**: bandit (fails on HIGH only; Ruff's `S` rules, a subset of bandit's checks, run at
-  every severity in the lint job) and
-  `pip-audit -r requirements.txt`.
+  every severity in the lint job), `pip-audit -r requirements.txt`, and pip-audit on what the
+  app ships: the bundled wheels and the asset's Python packages (lists from
+  `scripts/release_manifest.py`, below).
 
-`scheduled-scan.yml` also runs pip-audit and Trivy (dependencies, misconfiguration and secrets,
+`scheduled-scan.yml` also runs the same pip-audit scans and Trivy (dependencies, misconfiguration and secrets,
 failing on HIGH or CRITICAL) every Monday. GitHub disables a scheduled workflow after 60 days
 with no repository activity; re-enable it under Actions if that happens. It installs Trivy
 itself (pinned release, SHA-256 checked) because the action's installer currently fails.
 
 `release.yml` runs when a GitHub release is published. It checks that the tag is `v` plus the
-`dxapp.json` version, runs the tests, and audits and records what the app actually ships, which
+`dxapp.json` version, runs the tests against the bundled wheels, and audits and records what
+the app actually ships, which
 is not `requirements.txt`: the wheels bundled in `resources/home/dnanexus/packages/`, igv.js
 embedded in every viewer, and the `pp_headless_chromium` asset. `scripts/release_manifest.py`
 writes the artefacts, which are attached to the release (supply chain, CAF A4.a):
@@ -389,7 +391,11 @@ writes the artefacts, which are attached to the release (supply chain, CAF A4.a)
 |---|---|
 | `requirements-hashed.txt` | each bundled wheel as `name==version --hash=sha256:` of the shipped file; audited with pip-audit |
 | `asset-requirements.txt` | the Python packages the asset installs (`PINS` in `asset/Makefile`); audited with pip-audit |
-| `sbom.json` | CycloneDX SBOM: the app, the bundled wheels, igv.js (with its file hash) and the asset (record ID, its packages and Chromium) |
+| `sbom.json` | CycloneDX SBOM: the app, the bundled wheels, igv.js (with its file hash and the DOMPurify it bundles) and the asset (record ID, its Python packages and the Chromium version their Playwright pins). The Ubuntu libraries the asset installs are not listed |
+
+The release workflow runs after the GitHub release is published, as in the template repo. The
+same audits already run on every pull request and push to `main`, so a tagged commit has
+passed them; publish the DNAnexus app only after that commit's CI is green.
 
 To run the lint job locally:
 

@@ -8,6 +8,7 @@ on:
 jobs:
   dependency-scan:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     permissions:
       contents: read
       security-events: write
@@ -25,6 +26,14 @@ jobs:
         id: pip_audit
         continue-on-error: true
         run: pip-audit -r requirements.txt
+      - name: Run pip-audit on what the app ships (bundled wheels, asset packages)
+        id: pip_audit_shipped
+        continue-on-error: true
+        run: |
+          python3 scripts/release_manifest.py requirements > "$RUNNER_TEMP/shipped-requirements.txt"
+          python3 scripts/release_manifest.py asset-requirements > "$RUNNER_TEMP/asset-requirements.txt"
+          pip-audit -r "$RUNNER_TEMP/shipped-requirements.txt" --disable-pip --require-hashes
+          pip-audit -r "$RUNNER_TEMP/asset-requirements.txt" --disable-pip --no-deps
       # trivy-action's own installer (setup-trivy) downloads from get.trivy.dev, which does not
       # resolve (curl exit 6, from 4 Nov 2026). Install the same Trivy release from GitHub,
       # checked against a pinned SHA-256, and tell the action to skip its installer.
@@ -35,7 +44,8 @@ jobs:
         run: |
           cd "$RUNNER_TEMP"                # keep the download out of the scanned checkout
           TARBALL="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
-          curl -fsSLO "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${TARBALL}"
+          curl -fsSLO --connect-timeout 30 --max-time 300 \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${TARBALL}"
           echo "${TRIVY_SHA256}  ${TARBALL}" | sha256sum -c -
           mkdir -p "$HOME/.local/bin"
           tar -xzf "$TARBALL" -C "$HOME/.local/bin" trivy
@@ -58,7 +68,7 @@ jobs:
         with:
           sarif_file: trivy.sarif
       - name: Fail if pip-audit found vulnerabilities
-        if: always() && steps.pip_audit.outcome == 'failure'
+        if: always() && (steps.pip_audit.outcome == 'failure' || steps.pip_audit_shipped.outcome == 'failure')
         run: |
           echo "pip-audit detected vulnerabilities — see results above"
           exit 1

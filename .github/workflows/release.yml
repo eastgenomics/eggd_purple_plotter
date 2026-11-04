@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  release-artefacts:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
+        with:
+          python-version: "3.12"
+      - name: Release tag matches dxapp.json
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          MANIFEST_VER=$(jq -er .version dxapp.json)
+          test "v$MANIFEST_VER" = "$RELEASE_TAG"
+      - name: Install test and release tools
+        run: pip install pandas pytest playwright==1.64.1 pip-audit==2.10.1 cyclonedx-bom==7.3.0
+      - name: Require a browser (otherwise the image-export tests would silently skip)
+        run: command -v google-chrome || command -v chromium || command -v chromium-browser
+      - name: Run tests
+        run: pytest tests/ -v
+      - name: List what the app ships, with hashes (supply chain — CAF A4.a)
+        run: |
+          python3 scripts/release_manifest.py requirements > requirements-hashed.txt
+          python3 scripts/release_manifest.py asset-requirements > asset-requirements.txt
+          cat requirements-hashed.txt asset-requirements.txt
+      - name: Run pip-audit on the bundled wheels and the asset's packages (CVE scan — release gate)
+        run: |
+          pip-audit -r requirements-hashed.txt --disable-pip --require-hashes
+          pip-audit -r asset-requirements.txt --disable-pip --no-deps
+      - name: Generate SBOM in CycloneDX format (CAF A4.a)
+        run: |
+          cyclonedx-py requirements requirements-hashed.txt --output-format JSON -o sbom.json
+          python3 scripts/release_manifest.py extend-sbom sbom.json
+      - name: Upload release artefacts (retained 90 days)
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b  # v4.5.0
+        with:
+          name: release-artefacts-${{ github.sha }}
+          path: |
+            requirements-hashed.txt
+            asset-requirements.txt
+            sbom.json
+          retention-days: 90
+      - name: Attach artefacts to GitHub Release (5-year retention — CAF A4.a)
+        run: gh release upload --clobber "$RELEASE_TAG" requirements-hashed.txt asset-requirements.txt sbom.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}

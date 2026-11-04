@@ -367,17 +367,33 @@ python3 -c "import json; json.load(open('dxapp.json')); print('valid')"
 `.github/workflows/pytest.yml` runs three jobs on every pull request and on pushes to `main`:
 
 - **test**: `pytest tests/ -v`, with the runner's preinstalled Chrome for the image-export tests.
-- **lint**: Ruff (`ruff check resources tests`; rules in `pyproject.toml`), zizmor
+- **lint**: Ruff (`ruff check resources tests scripts`; rules in `pyproject.toml`), zizmor
   (`zizmor --offline --strict-collection .github/workflows/`) and ShellCheck 0.11.0 (pinned via
   `shellcheck-py`) on `src/code.sh`, `infra/*.sh` and `resources/usr/bin/*`.
 - **security**: bandit (fails on HIGH only; Ruff's `S` rules, a subset of bandit's checks, run at
   every severity in the lint job) and
   `pip-audit -r requirements.txt`.
 
-`scheduled-scan.yml` also runs pip-audit and Trivy every Monday. To run the lint job locally:
+`scheduled-scan.yml` also runs pip-audit and Trivy (dependencies, misconfiguration and secrets,
+failing on HIGH or CRITICAL) every Monday. GitHub disables a scheduled workflow after 60 days
+with no repository activity; re-enable it under Actions if that happens.
+
+`release.yml` runs when a GitHub release is published. It checks that the tag is `v` plus the
+`dxapp.json` version, runs the tests, and audits and records what the app actually ships, which
+is not `requirements.txt`: the wheels bundled in `resources/home/dnanexus/packages/`, igv.js
+embedded in every viewer, and the `pp_headless_chromium` asset. `scripts/release_manifest.py`
+writes the artefacts, which are attached to the release (supply chain, CAF A4.a):
+
+| Artefact | Contents |
+|---|---|
+| `requirements-hashed.txt` | each bundled wheel as `name==version --hash=sha256:` of the shipped file; audited with pip-audit |
+| `asset-requirements.txt` | the Python packages the asset installs (`PINS` in `asset/Makefile`); audited with pip-audit |
+| `sbom.json` | CycloneDX SBOM: the app, the bundled wheels, igv.js (with its file hash) and the asset (record ID, its packages and Chromium) |
+
+To run the lint job locally:
 
 ```bash
-uvx ruff@0.17.3 check resources tests
+uvx ruff@0.17.3 check resources tests scripts
 uvx zizmor@1.31.1 --offline --strict-collection .github/workflows/
 uvx --from shellcheck-py==0.11.0.1 shellcheck src/code.sh infra/*.sh resources/usr/bin/mark-section resources/usr/bin/mark-success
 ```

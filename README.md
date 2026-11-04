@@ -183,6 +183,13 @@ dx publish app-xxxx                  # makes it available to authorizedUsers
 dx run app-eggd_purple_plotter ...    # same -i args as above
 ```
 
+Build the release app only from the tagged release commit. DNAnexus never lets an app
+version string be used twice, even after an unpublished version is deleted: a later build of the
+same version gets a `+build.<timestamp>` suffix, and with `--no-version-autonumbering` it fails
+with `Could not create the requested version`. An unpublished `1.1.0` app had been built from a
+pre-release branch, so the v1.1.0 code is released on DNAnexus as v1.1.1, which differs from
+v1.1.0 only in its version number.
+
 ---
 
 ## Security
@@ -264,7 +271,7 @@ and injection risks this release removes.
 .venv/bin/python3 resources/home/dnanexus/purple_plotter/purple_plotter.py --print-script-hashes
 ```
 
-prints the two `sha256-…` values. For v1.1.0:
+prints the two `sha256-…` values. For v1.1.0 and v1.1.1 (v1.1.1 changes neither script):
 
 | Script | Hash |
 |---|---|

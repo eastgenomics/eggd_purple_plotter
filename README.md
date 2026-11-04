@@ -183,14 +183,20 @@ set -euo pipefail                    # stop at the first failing step
 TAG=vX.Y.Z; VER=${TAG#v}
 [[ $TAG =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]  # plain vX.Y.Z, no suffix
 COMMIT=$(git rev-parse --verify "refs/tags/$TAG^{commit}")  # must be a tag, not a branch
-git worktree add --detach /tmp/release "$COMMIT"
-cd /tmp/release
+REPO=$(pwd)
+WT=$(mktemp -d)                      # fresh worktree each attempt, removed on exit
+trap 'cd "$REPO" && git worktree remove --force "$WT"' EXIT
+git worktree add --detach "$WT" "$COMMIT"
+cd "$WT"
+MANIFEST_NAME=$(jq -er .name dxapp.json)
+test "$MANIFEST_NAME" = eggd_purple_plotter  # the app the checks below query
 MANIFEST_VER=$(jq -er .version dxapp.json)
 RELEASE_PROP=$(jq -er .properties.githubRelease dxapp.json)
 test "$MANIFEST_VER" = "$VER"        # manifest matches the tag
 test "$RELEASE_PROP" = "$VER"
 # dx build applies dxapp.json's authorizedUsers and developers to the whole app, including
-# published versions. Stop here if either differs; change it deliberately first with
+# published versions. Stop here if either differs (and make no permission changes while a
+# release build runs); change them deliberately first with
 # dx api app-eggd_purple_plotter {add,remove}{AuthorizedUsers,Developers} '{"…": [...]}'
 LIVE_USERS=$(dx api app-eggd_purple_plotter listAuthorizedUsers | jq -ec '.authorizedUsers | sort')
 LIVE_DEVS=$(dx api app-eggd_purple_plotter listDevelopers | jq -ec '.developers | sort')

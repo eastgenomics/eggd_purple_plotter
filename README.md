@@ -179,15 +179,19 @@ build is dev-only and is not what end users run. Build it from a clean checkout 
 tag, and only once per version:
 
 ```bash
-set -euo pipefail                    # every step must succeed before the next runs
+set -euo pipefail                    # stop at the first failing step
 TAG=vX.Y.Z; VER=${TAG#v}
-git worktree add --detach /tmp/release "$TAG"
+COMMIT=$(git rev-parse --verify "refs/tags/$TAG^{commit}")  # must be a tag, not a branch
+git worktree add --detach /tmp/release "$COMMIT"
 cd /tmp/release
-test "$(jq -r .version dxapp.json)" = "$VER"                 # manifest matches the tag
-test "$(jq -r .properties.githubRelease dxapp.json)" = "$VER"
-APP=$(dx build --app --no-update --no-version-autonumbering | jq -r .id)  # add --bill-to <org> if needed;
+MANIFEST_VER=$(jq -er .version dxapp.json)
+RELEASE_PROP=$(jq -er .properties.githubRelease dxapp.json)
+test "$MANIFEST_VER" = "$VER"        # manifest matches the tag
+test "$RELEASE_PROP" = "$VER"
+APP=$(dx build --app --no-update --no-version-autonumbering | jq -er .id)  # add --bill-to <org> if needed;
                                      # logs go to stderr, stdout is {"id": "app-…"}
-test "$(dx describe "$APP" --json | jq -r .version)" = "$VER" # exactly X.Y.Z, no suffix
+APP_VER=$(dx describe "$APP" --json | jq -er .version)
+test "$APP_VER" = "$VER"             # exactly X.Y.Z, no suffix
 dx publish "$APP"                    # makes it available to authorizedUsers
 dx run app-eggd_purple_plotter ...   # same -i args as above
 ```

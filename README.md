@@ -376,7 +376,8 @@ python3 -c "import json; json.load(open('dxapp.json')); print('valid')"
 
 `scheduled-scan.yml` also runs pip-audit and Trivy (dependencies, misconfiguration and secrets,
 failing on HIGH or CRITICAL) every Monday. GitHub disables a scheduled workflow after 60 days
-with no repository activity; re-enable it under Actions if that happens.
+with no repository activity; re-enable it under Actions if that happens. It installs Trivy
+itself (pinned release, SHA-256 checked) because the action's installer currently fails.
 
 `release.yml` runs when a GitHub release is published. It checks that the tag is `v` plus the
 `dxapp.json` version, runs the tests, and audits and records what the app actually ships, which

@@ -25,9 +25,26 @@ jobs:
         id: pip_audit
         continue-on-error: true
         run: pip-audit -r requirements.txt
+      # trivy-action's own installer (setup-trivy) downloads from get.trivy.dev, which does not
+      # resolve (curl exit 6, from 4 Nov 2026). Install the same Trivy release from GitHub,
+      # checked against a pinned SHA-256, and tell the action to skip its installer.
+      - name: Install Trivy 0.70.0 (pinned, checksum-verified)
+        env:
+          TRIVY_VERSION: 0.70.0
+          TRIVY_SHA256: 8b4376d5d6befe5c24d503f10ff136d9e0c49f9127a4279fd110b727929a5aa9
+        run: |
+          cd "$RUNNER_TEMP"                # keep the download out of the scanned checkout
+          TARBALL="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl -fsSLO "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${TARBALL}"
+          echo "${TRIVY_SHA256}  ${TARBALL}" | sha256sum -c -
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "$TARBALL" -C "$HOME/.local/bin" trivy
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/trivy" --version
       - name: Run Trivy filesystem scan (Python deps, misconfig, secrets)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
+          skip-setup-trivy: true
           scan-type: fs
           scanners: vuln,misconfig,secret
           severity: HIGH,CRITICAL

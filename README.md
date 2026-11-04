@@ -175,20 +175,24 @@ dx run applet-xxxx \
 ```
 
 For a release, build and publish the actual **app** object instead — an applet
-build is dev-only and is not what end users run:
+build is dev-only and is not what end users run. Build it from a clean checkout of the release
+tag, and only once per version:
 
 ```bash
-dx build --app                       # -> app-xxxx
+git worktree add --detach /tmp/release vX.Y.Z && cd /tmp/release
+dx build --app --no-update --no-version-autonumbering   # -> app-xxxx
+dx describe app-xxxx --json | jq -r .version            # must be exactly X.Y.Z
 dx publish app-xxxx                  # makes it available to authorizedUsers
 dx run app-eggd_purple_plotter ...    # same -i args as above
 ```
 
-Build the release app only from the tagged release commit. DNAnexus never lets an app
-version string be used twice, even after an unpublished version is deleted: a later build of the
-same version gets a `+build.<timestamp>` suffix, and with `--no-version-autonumbering` it fails
-with `Could not create the requested version`. An unpublished `1.1.0` app had been built from a
-pre-release branch, so the v1.1.0 code is released on DNAnexus as v1.1.1, which differs from
-v1.1.0 only in its version number.
+DNAnexus never lets an app version string be used twice, even after an unpublished version is
+deleted. With these flags a second build of the same version fails with `Could not create the
+requested version`. Without them, `dx build --app` either updates the existing unpublished
+version in place (no `--no-update`) or creates a `X.Y.Z+build.<timestamp>` version (no
+`--no-version-autonumbering`). An unpublished `1.1.0` app had been built from a pre-release
+branch, so the code tagged v1.1.0 is released on DNAnexus as v1.1.1, which differs from it only
+in its version number.
 
 ---
 
@@ -260,7 +264,7 @@ serves the viewers should add the same policy as a response header, with
 hashes of **every plotter release whose viewers the site serves** (each release's `viewer.js`
 has its own hash; list them all while that release's viewers are still served). Viewers from
 v1.0.0 cannot meet such a policy at all: they load igv.js from the igv.org CDN and their inline
-script contains the sample's data, so it differs per file. Regenerate them with v1.1.0 or later
+script contains the sample's data, so it differs per file. Regenerate them with the v1.1.1 app or later
 before the header is applied. The alternative, a separate legacy policy that
 allows the CDN and `'unsafe-inline'` (or a hash per viewer), brings back the third-party code
 and injection risks this release removes.
@@ -271,7 +275,7 @@ and injection risks this release removes.
 .venv/bin/python3 resources/home/dnanexus/purple_plotter/purple_plotter.py --print-script-hashes
 ```
 
-prints the two `sha256-…` values. For v1.1.0 and v1.1.1 (v1.1.1 changes neither script):
+prints the two `sha256-…` values. For the code tagged v1.1.0 and v1.1.1, i.e. the v1.1.1 app (v1.1.1 changes neither script). Viewers made by pre-release builds may differ; check their hashes before serving them:
 
 | Script | Hash |
 |---|---|

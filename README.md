@@ -191,6 +191,8 @@ set -euo pipefail                    # stop at the first failing step
 TAG=vX.Y.Z; VER=${TAG#v}
 [[ $TAG =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]  # plain vX.Y.Z, no suffix
 COMMIT=$(git rev-parse --verify "refs/tags/$TAG^{commit}")  # must be a tag, not a branch
+GITHUB_COMMIT=$(gh api "repos/eastgenomics/eggd_purple_plotter/commits/refs/tags/$TAG" --jq .sha)
+test "$GITHUB_COMMIT" = "$COMMIT"    # the local tag is the one on GitHub (what release.yml audits)
 REPO=$(pwd)
 WT=$(mktemp -d)                      # fresh worktree each attempt, removed when the block ends
 trap 'cd "$REPO"; git worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"' EXIT

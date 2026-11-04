@@ -51,7 +51,7 @@ jobs:
 
   security:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       contents: read
       security-events: write
@@ -85,3 +85,25 @@ jobs:
         run: |
           python3 scripts/release_manifest.py asset-requirements > asset-requirements.txt
           pip-audit -r asset-requirements.txt --disable-pip --no-deps
+      - name: Install Trivy 0.70.0 (pinned, checksum-verified)
+        if: always()
+        env:
+          TRIVY_VERSION: 0.70.0
+          TRIVY_SHA256: 8b4376d5d6befe5c24d503f10ff136d9e0c49f9127a4279fd110b727929a5aa9
+        run: |
+          cd "$RUNNER_TEMP"
+          TARBALL="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl -fsSLO --connect-timeout 30 --max-time 300 \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${TARBALL}"
+          echo "${TRIVY_SHA256}  ${TARBALL}" | sha256sum -c -
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "$TARBALL" -C "$HOME/.local/bin" trivy
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Scan the SBOM of what the app ships with Trivy (same check as the release gate)
+        if: always()
+        run: |
+          pip install cyclonedx-bom==7.3.0 playwright==1.64.1
+          python3 scripts/release_manifest.py requirements > "$RUNNER_TEMP/sbom-requirements.txt"
+          cyclonedx-py requirements "$RUNNER_TEMP/sbom-requirements.txt" --output-format JSON -o "$RUNNER_TEMP/sbom.json"
+          python3 scripts/release_manifest.py extend-sbom "$RUNNER_TEMP/sbom.json"
+          trivy sbom --severity HIGH,CRITICAL --exit-code 1 --ignorefile .trivyignore.yaml "$RUNNER_TEMP/sbom.json"

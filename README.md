@@ -200,9 +200,12 @@ git worktree add --detach "$WT" "$COMMIT"
 cd "$WT"
 MANIFEST_NAME=$(jq -er .name dxapp.json)
 test "$MANIFEST_NAME" = eggd_purple_plotter  # the app the checks below query
+# CI (tests, lint, security scans) passed on the tagged commit within the last 7 days; scan
+# results go stale (new advisories, expired exceptions), so re-run CI on the tag if it is older
 CI_PASSED=$(gh run list --repo eastgenomics/eggd_purple_plotter --commit "$COMMIT" --workflow CI \
-  --status success --json databaseId --jq length)
-test "$CI_PASSED" -gt 0              # CI (tests, lint, security scans) passed on the tagged commit
+  --status success --json createdAt \
+  --jq '[.[] | select((.createdAt | fromdateiso8601) > (now - 7*86400))] | length')
+test "$CI_PASSED" -gt 0
 MANIFEST_VER=$(jq -er .version dxapp.json)
 RELEASE_PROP=$(jq -er .properties.githubRelease dxapp.json)
 test "$MANIFEST_VER" = "$VER"        # manifest matches the tag
@@ -411,7 +414,8 @@ packages in the SBOM). Chromium and Node.js are listed with versions but are not
 against a vulnerability database; they change only when the asset's Playwright pin changes.
 
 The release workflow runs after the GitHub release is published, as in the template repo. The
-same audits run in CI on every pull request and push to `main`. Tag only a commit whose CI
+same audits, including the Trivy scan of the SBOM, run in CI on every pull request and push
+to `main`. Tag only a commit whose CI
 run passed; the DNAnexus release procedure above checks this for the tagged commit before
 building.
 

@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:   # the release procedure runs CI on the release tag just before building
 
 permissions:
   contents: read

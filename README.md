@@ -200,12 +200,21 @@ git worktree add --detach "$WT" "$COMMIT"
 cd "$WT"
 MANIFEST_NAME=$(jq -er .name dxapp.json)
 test "$MANIFEST_NAME" = eggd_purple_plotter  # the app the checks below query
-# CI (tests, lint, security scans) passed on the tagged commit within the last 7 days; scan
-# results go stale (new advisories, expired exceptions), so re-run CI on the tag if it is older
-CI_PASSED=$(gh run list --repo eastgenomics/eggd_purple_plotter --commit "$COMMIT" --workflow CI \
-  --status success --json createdAt \
-  --jq '[.[] | select((.createdAt | fromdateiso8601) > (now - 7*86400))] | length')
-test "$CI_PASSED" -gt 0
+# Run CI (tests, lint, security scans including the Trivy SBOM scan) on the tag now and require
+# that run to pass: an older pass can predate new advisories or expired exceptions
+GH_REPO=eastgenomics/eggd_purple_plotter
+START=$(date -u +%s)
+gh workflow run CI --repo "$GH_REPO" --ref "$TAG"
+RUN=
+for _ in $(seq 30); do               # the new run can take a few seconds to appear
+  sleep 10
+  RUN=$(gh run list --repo "$GH_REPO" --workflow CI --event workflow_dispatch --commit "$COMMIT" \
+    --json databaseId,createdAt \
+    --jq "[.[] | select((.createdAt | fromdateiso8601) >= $START)][0].databaseId // empty")
+  [ -n "$RUN" ] && break
+done
+test -n "$RUN"
+gh run watch "$RUN" --repo "$GH_REPO" --exit-status  # non-zero if any job failed
 MANIFEST_VER=$(jq -er .version dxapp.json)
 RELEASE_PROP=$(jq -er .properties.githubRelease dxapp.json)
 test "$MANIFEST_VER" = "$VER"        # manifest matches the tag
@@ -415,9 +424,8 @@ against a vulnerability database; they change only when the asset's Playwright p
 
 The release workflow runs after the GitHub release is published, as in the template repo. The
 same audits, including the Trivy scan of the SBOM, run in CI on every pull request and push
-to `main`. Tag only a commit whose CI
-run passed; the DNAnexus release procedure above checks this for the tagged commit before
-building.
+to `main`, and the DNAnexus release procedure above runs CI again on the tag and requires that
+run to pass before building.
 
 To run the lint job locally:
 

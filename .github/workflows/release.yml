@@ -4,11 +4,17 @@ on:
   release:
     types: [published]
 
+permissions: {}  # each job asks for what it needs
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release-artefacts:
     runs-on: ubuntu-24.04
     permissions:
-      contents: write
+      contents: write  # gh release upload attaches the artefacts to the release
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:

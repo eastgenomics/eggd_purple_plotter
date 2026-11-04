@@ -181,6 +181,7 @@ tag, and only once per version:
 ```bash
 set -euo pipefail                    # stop at the first failing step
 TAG=vX.Y.Z; VER=${TAG#v}
+[[ $TAG =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]  # plain vX.Y.Z, no suffix
 COMMIT=$(git rev-parse --verify "refs/tags/$TAG^{commit}")  # must be a tag, not a branch
 git worktree add --detach /tmp/release "$COMMIT"
 cd /tmp/release
@@ -201,8 +202,9 @@ deleted. With these flags a second build of the same version fails with `Could n
 requested version`. Without them, `dx build --app` either updates the existing unpublished
 version in place (no `--no-update`) or creates a `X.Y.Z+build.<timestamp>` version (no
 `--no-version-autonumbering`). An unpublished `1.1.0` app had been built from a pre-release
-branch, so the code tagged v1.1.0 is released on DNAnexus as v1.1.1, which differs from it only
-in its version number.
+branch, so the code tagged v1.1.0 is released on DNAnexus as v1.1.1. Its runtime code is the
+same as v1.1.0's; only the version and this README (which `dx build` uses as the app
+description) differ.
 
 ---
 

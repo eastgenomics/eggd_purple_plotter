@@ -175,13 +175,67 @@ dx run applet-xxxx \
 ```
 
 For a release, build and publish the actual **app** object instead — an applet
-build is dev-only and is not what end users run:
+build is dev-only. Build it from a clean checkout of the release tag:
 
 ```bash
-dx build --app                       # -> app-xxxx
-dx publish app-xxxx                  # makes it available to authorizedUsers
-dx run app-eggd_purple_plotter ...    # same -i args as above
+# If dxapp.json's authorizedUsers or developers differ from the app's, the checks below stop
+# the release. dx build would otherwise apply them to the whole app, including published
+# versions, so change them deliberately first, for example:
+#   dx remove developers app-eggd_purple_plotter user-<name>
+#   dx add developers    app-eggd_purple_plotter org-<name>
+#   dx add users / dx remove users app-eggd_purple_plotter <user-or-org>
+# Make no permission changes while the release build runs.
+
+(                                    # subshell: the EXIT trap fires when this block ends
+set -euo pipefail                    # stop at the first failing step
+TAG=vX.Y.Z; VER=${TAG#v}
+[[ $TAG =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]  # plain vX.Y.Z, no suffix
+COMMIT=$(git rev-parse --verify "refs/tags/$TAG^{commit}")  # must be a tag, not a branch
+GITHUB_COMMIT=$(gh api "repos/eastgenomics/eggd_purple_plotter/commits/refs/tags/$TAG" --jq .sha)
+test "$GITHUB_COMMIT" = "$COMMIT"    # the local tag is the one on GitHub (what release.yml audits)
+REPO=$(pwd)
+WT=$(mktemp -d)                      # fresh worktree each attempt, removed when the block ends
+trap 'cd "$REPO"; git worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"' EXIT
+git worktree add --detach "$WT" "$COMMIT"
+cd "$WT"
+MANIFEST_NAME=$(jq -er .name dxapp.json)
+test "$MANIFEST_NAME" = eggd_purple_plotter  # the app the checks below query
+# Run CI (tests, lint, security scans including the Trivy SBOM scan) on the tag now and require
+# that run to pass: an older pass can predate new advisories or expired exceptions
+GH_REPO=eastgenomics/eggd_purple_plotter
+START=$(date -u +%s)
+gh workflow run CI --repo "$GH_REPO" --ref "$TAG"
+RUN=
+for _ in $(seq 30); do               # the new run can take a few seconds to appear
+  sleep 10
+  RUN=$(gh run list --repo "$GH_REPO" --workflow CI --event workflow_dispatch --commit "$COMMIT" \
+    --json databaseId,createdAt \
+    --jq "[.[] | select((.createdAt | fromdateiso8601) >= $START)][0].databaseId // empty")
+  [ -n "$RUN" ] && break
+done
+test -n "$RUN"
+gh run watch "$RUN" --repo "$GH_REPO" --exit-status  # non-zero if any job failed
+MANIFEST_VER=$(jq -er .version dxapp.json)
+RELEASE_PROP=$(jq -er .properties.githubRelease dxapp.json)
+test "$MANIFEST_VER" = "$VER"        # manifest matches the tag
+test "$RELEASE_PROP" = "$VER"
+LIVE_USERS=$(dx api app-eggd_purple_plotter listAuthorizedUsers | jq -ec '.authorizedUsers | sort')
+LIVE_DEVS=$(dx api app-eggd_purple_plotter listDevelopers | jq -ec '.developers | sort')
+MANIFEST_USERS=$(jq -ec '.authorizedUsers | sort' dxapp.json)
+MANIFEST_DEVS=$(jq -ec '.developers | sort' dxapp.json)
+test "$LIVE_USERS" = "$MANIFEST_USERS"
+test "$LIVE_DEVS" = "$MANIFEST_DEVS"
+APP=$(dx build --app --no-update --no-version-autonumbering --yes | jq -er .id)  # add --bill-to <org> if needed;
+                                     # logs go to stderr, stdout is {"id": "app-…"}
+APP_VER=$(dx describe "$APP" --json | jq -er .version)
+test "$APP_VER" = "$VER"             # exactly X.Y.Z, no suffix
+dx publish "$APP"                    # makes it available to authorizedUsers
+echo "published $APP ($APP_VER)"
+)
 ```
+
+Then run it as before: `dx run app-eggd_purple_plotter` with the same `-i` arguments as the
+applet example above.
 
 ---
 
@@ -253,7 +307,7 @@ serves the viewers should add the same policy as a response header, with
 hashes of **every plotter release whose viewers the site serves** (each release's `viewer.js`
 has its own hash; list them all while that release's viewers are still served). Viewers from
 v1.0.0 cannot meet such a policy at all: they load igv.js from the igv.org CDN and their inline
-script contains the sample's data, so it differs per file. Regenerate them with v1.1.0 or later
+script contains the sample's data, so it differs per file. Regenerate them with the v1.1.1 app or later
 before the header is applied. The alternative, a separate legacy policy that
 allows the CDN and `'unsafe-inline'` (or a hash per viewer), brings back the third-party code
 and injection risks this release removes.
@@ -264,7 +318,7 @@ and injection risks this release removes.
 .venv/bin/python3 resources/home/dnanexus/purple_plotter/purple_plotter.py --print-script-hashes
 ```
 
-prints the two `sha256-…` values. For v1.1.0:
+prints the two `sha256-…` values. For the code tagged v1.1.0 and v1.1.1, i.e. the v1.1.1 app (v1.1.1 changes neither script). Viewers made by pre-release builds may differ; check their hashes before serving them:
 
 | Script | Hash |
 |---|---|
@@ -329,18 +383,54 @@ python3 -c "import json; json.load(open('dxapp.json')); print('valid')"
 
 `.github/workflows/pytest.yml` runs three jobs on every pull request and on pushes to `main`:
 
-- **test**: `pytest tests/ -v`, with the runner's preinstalled Chrome for the image-export tests.
-- **lint**: Ruff (`ruff check resources tests`; rules in `pyproject.toml`), zizmor
+- **test**: `pytest tests/ -v` against the bundled wheels (checked with
+  `scripts/release_manifest.py check-installed`), with the runner's preinstalled Chrome for
+  the image-export tests.
+- **lint**: Ruff (`ruff check resources tests scripts`; rules in `pyproject.toml`), zizmor
   (`zizmor --offline --strict-collection .github/workflows/`) and ShellCheck 0.11.0 (pinned via
   `shellcheck-py`) on `src/code.sh`, `infra/*.sh` and `resources/usr/bin/*`.
 - **security**: bandit (fails on HIGH only; Ruff's `S` rules, a subset of bandit's checks, run at
-  every severity in the lint job) and
-  `pip-audit -r requirements.txt`.
+  every severity in the lint job), `pip-audit -r requirements.txt`, and pip-audit on what the
+  app ships: the bundled wheels and the asset's Python packages (lists from
+  `scripts/release_manifest.py`, below).
 
-`scheduled-scan.yml` also runs pip-audit and Trivy every Monday. To run the lint job locally:
+`scheduled-scan.yml` also runs the same pip-audit scans, a Trivy scan of the SBOM described below, and Trivy (dependencies, misconfiguration and secrets,
+failing on HIGH or CRITICAL) every Monday. GitHub disables a scheduled workflow after 60 days
+with no repository activity; re-enable it under Actions if that happens. It installs Trivy
+itself (pinned release, SHA-256 checked) because the action's installer currently fails.
+
+`release.yml` runs when a GitHub release is published. It checks that the tag is `v` plus the
+`dxapp.json` version, runs the tests against the bundled wheels, and audits and records what
+the app actually ships, which
+is not `requirements.txt`: the wheels bundled in `resources/home/dnanexus/packages/`, igv.js
+embedded in every viewer, and the `pp_headless_chromium` asset. `scripts/release_manifest.py`
+writes the artefacts, which are attached to the release (supply chain, CAF A4.a):
+
+| Artefact | Contents |
+|---|---|
+| `requirements-hashed.txt` | each bundled wheel as `name==version --hash=sha256:` of the shipped file; audited with pip-audit |
+| `asset-requirements.txt` | the Python packages the asset installs (`PINS` in `asset/Makefile`); audited with pip-audit. Taken from the build source at the tagged commit, not read from the asset record |
+| `sbom.json` | CycloneDX SBOM: the app, the bundled wheels, igv.js (with its file hash and the libraries it names in licence banners: DOMPurify, vanilla-picker, pako, Canvas 2 Svg) and the asset (record ID, its Python packages, and the Chromium and Node.js versions their Playwright pins). It is marked incomplete: it has no dependency graph, and does not list igv.js's CRAM bundle, native libraries vendored inside wheels (such as NumPy's OpenBLAS), or the asset's Ubuntu libraries and venv pip (#13) |
+
+Accepted exceptions live in `.trivyignore.yaml`. Each entry names its governance record
+(GOVR hazard) and has an `expired_at` date; once it passes, the release and weekly scans fail
+again. Current entries: two DOMPurify advisories in the igv.js bundle, accepted until
+2027-02-04 (GOVR-14; upgrade in #14).
+
+What is checked for known vulnerabilities: the bundled wheels and the asset's Python packages
+(pip-audit, and Trivy through the SBOM), and the libraries igv.js bundles (Trivy, as npm
+packages in the SBOM). Chromium and Node.js are listed with versions but are not matched
+against a vulnerability database; they change only when the asset's Playwright pin changes.
+
+The release workflow runs after the GitHub release is published, as in the template repo. The
+same audits, including the Trivy scan of the SBOM, run in CI on every pull request and push
+to `main`, and the DNAnexus release procedure above runs CI again on the tag and requires that
+run to pass before building.
+
+To run the lint job locally:
 
 ```bash
-uvx ruff@0.17.3 check resources tests
+uvx ruff@0.17.3 check resources tests scripts
 uvx zizmor@1.31.1 --offline --strict-collection .github/workflows/
 uvx --from shellcheck-py==0.11.0.1 shellcheck src/code.sh infra/*.sh resources/usr/bin/mark-section resources/usr/bin/mark-success
 ```
@@ -371,10 +461,3 @@ v1.0.0: it predates the inlined igv.js, the JSON data block and the CSP (see [Se
 | Instance | `mem1_ssd1_v2_x2` |
 | igv.js | 3.8.3 (embedded) |
 | Genome build | hg38 |
-
-## Sharing outputs by URL
-
-Finished sample HTML outputs can optionally be published to a private S3 bucket fronted
-by CloudFront so they can be shared with others by URL, outside of DNAnexus. See
-[`DEPLOYMENT.md`](DEPLOYMENT.md) for the live URL, resource names, and how to publish a
-new sample.

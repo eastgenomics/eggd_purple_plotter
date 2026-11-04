@@ -16,6 +16,7 @@ import hashlib
 import importlib.metadata
 import json
 import re
+import subprocess  # nosec B404 - only runs Playwright's own node binary with fixed arguments
 import sys
 from pathlib import Path
 
@@ -73,22 +74,47 @@ def igv_js_version() -> str:
     return m[1]
 
 
-def dompurify_version() -> str:
-    """The DOMPurify release bundled inside igv.min.js, from its licence banner."""
-    m = re.search(rb"@license DOMPurify (\d+\.\d+\.\d+) ", IGV_JS.read_bytes())
-    if not m:
-        raise ValueError("no DOMPurify licence banner in igv.min.js")
-    return m[1].decode()
+# Libraries igv.min.js bundles, found by their licence banners: (name, banner pattern, licence)
+IGV_BUNDLED = [
+    ("dompurify", rb"@license DOMPurify (\d+\.\d+\.\d+) ", "Apache-2.0 OR MPL-2.0"),
+    ("vanilla-picker", rb"/\*!\s*\*\s*vanilla-picker v(\d+\.\d+\.\d+)\s", "ISC"),
+    ("pako", rb"/\*! pako (\d+\.\d+\.\d+) ", "MIT AND Zlib"),
+]
 
 
-def chromium_version() -> str:
-    """Chromium headless shell version pinned by the asset's Playwright release."""
+def igv_bundled() -> list[tuple[str, str, str]]:
+    """(name, version, licence) of each library copy bundled in igv.min.js; igv.js 3.8.3
+    carries two versions each of vanilla-picker and pako."""
+    js = IGV_JS.read_bytes()
+    found = []
+    for name, pattern, licence in IGV_BUNDLED:
+        versions = sorted({m[1].decode() for m in re.finditer(pattern, js)})
+        if not versions:
+            raise ValueError(f"no {name} banner in igv.min.js")
+        found += [(name, v, licence) for v in versions]
+    return found
+
+
+def playwright_dir() -> Path:
+    """Installed Playwright package, checked to be the version the asset pins."""
     (playwright,) = [v for n, v in asset_pins() if n == "playwright"]
     installed = importlib.metadata.version("playwright")
     if installed != playwright:
         raise ValueError(f"asset pins playwright {playwright}, this Python has {installed}")
     import playwright as pw
-    browsers = json.loads((Path(pw.__file__).parent / "driver/package/browsers.json").read_text())
+    return Path(pw.__file__).parent
+
+
+def playwright_node_version() -> str:
+    """Node.js runtime bundled with the asset's Playwright (same release and platform)."""
+    out = subprocess.run([str(playwright_dir() / "driver/node"), "--version"],  # noqa: S603  # nosec B603 - installed Playwright's node, fixed argument
+                         capture_output=True, text=True, check=True, timeout=60).stdout
+    return out.strip().removeprefix("v")
+
+
+def chromium_version() -> str:
+    """Chromium headless shell version pinned by the asset's Playwright release."""
+    browsers = json.loads((playwright_dir() / "driver/package/browsers.json").read_text())
     (shell,) = [b for b in browsers["browsers"] if b["name"] == "chromium-headless-shell"]
     return shell["browserVersion"]
 
@@ -124,8 +150,9 @@ def extend_sbom(sbom: dict) -> dict:
         raise ValueError(f"dxapp.json pins {asset['name']} {dep['version']}, "
                          f"asset/dxasset.json is {asset['version']}")
     igv_version = igv_js_version()
-    purify = dompurify_version()
+    bundled = igv_bundled()
     chromium = chromium_version()
+    node = playwright_node_version()
     sbom.setdefault("metadata", {})["component"] = {
         "type": "application", "bom-ref": "app", "name": app["name"], "version": app["version"],
         "description": "DNAnexus app",
@@ -138,11 +165,10 @@ def extend_sbom(sbom: dict) -> dict:
         "licenses": [{"license": {"id": "MIT"}}],
         "description": "igv.min.js, embedded in every generated viewer",
         "components": [{
-            "type": "library", "bom-ref": "igv.js/dompurify", "name": "dompurify",
-            "version": purify, "purl": f"pkg:npm/dompurify@{purify}",
-            "licenses": [{"expression": "Apache-2.0 OR MPL-2.0"}],
+            "type": "library", "bom-ref": f"igv.js/{n}@{v}", "name": n, "version": v,
+            "purl": f"pkg:npm/{n}@{v}", "licenses": [{"expression": lic}],
             "description": "bundled inside igv.min.js",
-        }],
+        } for n, v, lic in bundled],
     })
     components.append({
         "type": "application", "bom-ref": "asset", "name": asset["name"],
@@ -164,8 +190,17 @@ def extend_sbom(sbom: dict) -> dict:
             "description": "installed by the asset's Playwright (playwright install --only-shell "
                            "chromium); version from that Playwright release's browsers.json. "
                            "The Ubuntu libraries it needs (playwright install-deps) are not listed",
+        }, {
+            "type": "application", "bom-ref": "asset/node", "name": "node", "version": node,
+            "purl": f"pkg:generic/node@{node}",
+            "cpe": f"cpe:2.3:a:nodejs:node.js:{node}:*:*:*:*:*:*:*",
+            "description": "Node.js runtime bundled with the asset's Playwright (driver/node)",
         }],
     })
+    # cyclonedx-py lists every requirement as a leaf with no dependencies, which is not true
+    # (pandas needs numpy, ...). Drop that graph and say the inventory is incomplete.
+    sbom.pop("dependencies", None)
+    sbom["compositions"] = [{"aggregate": "incomplete"}]
     return sbom
 
 

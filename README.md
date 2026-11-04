@@ -393,7 +393,7 @@ writes the artefacts, which are attached to the release (supply chain, CAF A4.a)
 |---|---|
 | `requirements-hashed.txt` | each bundled wheel as `name==version --hash=sha256:` of the shipped file; audited with pip-audit |
 | `asset-requirements.txt` | the Python packages the asset installs (`PINS` in `asset/Makefile`); audited with pip-audit. Taken from the build source at the tagged commit, not read from the asset record |
-| `sbom.json` | CycloneDX SBOM: the app, the bundled wheels, igv.js (with its file hash and the DOMPurify it bundles) and the asset (record ID, its Python packages and the Chromium version their Playwright pins). The Ubuntu libraries the asset installs are not listed |
+| `sbom.json` | CycloneDX SBOM: the app, the bundled wheels, igv.js (with its file hash and the libraries it bundles: DOMPurify, vanilla-picker, pako) and the asset (record ID, its Python packages, and the Chromium and Node.js versions their Playwright pins). It has no dependency graph (marked incomplete), and does not list the asset's Ubuntu libraries or the pip in its venv |
 
 The release workflow runs after the GitHub release is published, as in the template repo. The
 same audits run in CI on every pull request and push to `main`. Tag only a commit whose CI

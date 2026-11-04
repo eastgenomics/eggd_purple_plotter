@@ -85,8 +85,10 @@ def test_extend_sbom_adds_app_igv_and_asset():
     igv, asset = sbom["components"]
     assert igv["version"] == rm.igv_js_version()
     assert igv["hashes"][0]["content"] == hashlib.sha256(rm.IGV_JS.read_bytes()).hexdigest()
-    (purify,) = igv["components"]
-    assert purify["name"] == "dompurify" and re.fullmatch(r"\d+\.\d+\.\d+", purify["version"])
+    bundled = {(c["name"], c["version"]) for c in igv["components"]}
+    assert {n for n, _ in bundled} == {"dompurify", "vanilla-picker", "pako"}
+    assert all(re.fullmatch(r"\d+\.\d+\.\d+", v) for _, v in bundled)
+    assert "dependencies" not in sbom and sbom["compositions"] == [{"aggregate": "incomplete"}]
     (record,) = [d["id"] for d in app["runSpec"]["assetDepends"]]
     assert {"name": "dnanexus:record", "value": record} in asset["properties"]
     (source,) = [p["value"] for p in asset["properties"] if p["name"] == "inventory:source"]
@@ -94,6 +96,24 @@ def test_extend_sbom_adds_app_igv_and_asset():
     parts = {c["name"]: c for c in asset["components"]}
     assert parts["playwright"]["version"] == dict(rm.asset_pins())["playwright"]
     assert re.fullmatch(r"\d+(\.\d+){3}", parts["chromium-headless-shell"]["version"])
+    assert re.fullmatch(r"\d+\.\d+\.\d+", parts["node"]["version"])
+
+
+def test_igv_bundled_libraries_are_found_by_banner():
+    # igv.js 3.8.3 carries DOMPurify 3.4.11 and two copies each of vanilla-picker and pako
+    assert set(rm.igv_bundled()) == {
+        ("dompurify", "3.4.11", "Apache-2.0 OR MPL-2.0"),
+        ("vanilla-picker", "2.12.1", "ISC"), ("vanilla-picker", "2.12.3", "ISC"),
+        ("pako", "2.0.4", "MIT AND Zlib"), ("pako", "2.1.0", "MIT AND Zlib"),
+    }
+
+
+def test_missing_banner_is_an_error(tmp_path, monkeypatch):
+    js = tmp_path / "igv.min.js"
+    js.write_bytes(b"/*! pako 2.1.0 https://github.com/nodeca/pako @license */")
+    monkeypatch.setattr(rm, "IGV_JS", js)
+    with pytest.raises(ValueError, match="no dompurify banner"):
+        rm.igv_bundled()
 
 
 def test_chromium_version_needs_the_asset_playwright(monkeypatch):

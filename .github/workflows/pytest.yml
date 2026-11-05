@@ -79,13 +79,15 @@ jobs:
       - name: Run pip-audit on the bundled wheels the app ships
         if: always()
         run: |
-          python3 scripts/release_manifest.py requirements > shipped-requirements.txt
-          pip-audit -r shipped-requirements.txt --disable-pip --require-hashes
+          mkdir -p "$RUNNER_TEMP/evidence"
+          python3 scripts/release_manifest.py requirements > "$RUNNER_TEMP/evidence/requirements-hashed.txt"
+          pip-audit -r "$RUNNER_TEMP/evidence/requirements-hashed.txt" --disable-pip --require-hashes
       - name: Run pip-audit on the asset's Python packages
         if: always()
         run: |
-          python3 scripts/release_manifest.py asset-requirements > asset-requirements.txt
-          pip-audit -r asset-requirements.txt --disable-pip --no-deps
+          mkdir -p "$RUNNER_TEMP/evidence"
+          python3 scripts/release_manifest.py asset-requirements > "$RUNNER_TEMP/evidence/asset-requirements.txt"
+          pip-audit -r "$RUNNER_TEMP/evidence/asset-requirements.txt" --disable-pip --no-deps
       - name: Install Trivy 0.70.0 (pinned, checksum-verified)
         if: always()
         env:
@@ -104,7 +106,18 @@ jobs:
         if: always()
         run: |
           pip install cyclonedx-bom==7.3.0 playwright==1.64.1
+          mkdir -p "$RUNNER_TEMP/evidence"
           python3 scripts/release_manifest.py requirements > "$RUNNER_TEMP/sbom-requirements.txt"
-          cyclonedx-py requirements "$RUNNER_TEMP/sbom-requirements.txt" --output-format JSON -o "$RUNNER_TEMP/sbom.json"
-          python3 scripts/release_manifest.py extend-sbom "$RUNNER_TEMP/sbom.json"
-          trivy sbom --severity HIGH,CRITICAL --exit-code 1 --ignorefile .trivyignore.yaml "$RUNNER_TEMP/sbom.json"
+          cyclonedx-py requirements "$RUNNER_TEMP/sbom-requirements.txt" --output-format JSON -o "$RUNNER_TEMP/evidence/sbom.json"
+          python3 scripts/release_manifest.py extend-sbom "$RUNNER_TEMP/evidence/sbom.json"
+          trivy sbom --severity HIGH,CRITICAL --exit-code 1 --ignorefile .trivyignore.yaml "$RUNNER_TEMP/evidence/sbom.json"
+      # Sign-off evidence: the SBOM and hashed lists for the commit CI ran on. For a release,
+      # dispatch CI on the release branch so this is the branch head, not a PR merge commit.
+      - name: Upload release evidence (retained 90 days)
+        if: always()
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b  # v4.5.0
+        with:
+          name: release-evidence-${{ github.sha }}
+          path: ${{ runner.temp }}/evidence/
+          if-no-files-found: error
+          retention-days: 90

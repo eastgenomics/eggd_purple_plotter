@@ -174,65 +174,83 @@ dx run applet-xxxx \
     --priority high --watch
 ```
 
-For a release, build and publish the actual **app** object instead — an applet
-build is dev-only. Build it from a clean checkout of the release tag:
+### Release (Bioinformatics Development Manual v3)
+
+A release is the **app** object (an applet is for development only). It follows the team's
+sign-off workflow: the app is built and tested during DEVELOPMENT, and the app that was tested
+and signed off is the one published. Nothing is rebuilt at release.
+
+**1. Build the app for testing (DEVELOPMENT).** Build from a clean checkout of the reviewed
+commit on the release branch. While the version is unpublished, `dx build --app` rebuilds over
+it in place; rebuild whenever the code changes, and re-run the tests on the result. Record the
+app ID and commit from the last build in the Confluence testing document.
 
 ```bash
-# If dxapp.json's authorizedUsers or developers differ from the app's, the checks below stop
-# the release. dx build would otherwise apply them to the whole app, including published
-# versions, so change them deliberately first, for example:
+# dx build applies dxapp.json's authorizedUsers and developers to the whole app, including
+# published versions, so the checks below stop the build if they differ from the app's.
+# Change them deliberately first, for example:
 #   dx remove developers app-eggd_purple_plotter user-<name>
 #   dx add developers    app-eggd_purple_plotter org-<name>
-#   dx add users / dx remove users app-eggd_purple_plotter <user-or-org>
-# Make no permission changes while the release build runs.
+#   dx add users app-eggd_purple_plotter <user-or-org>
+#   dx remove users app-eggd_purple_plotter <user-or-org>
 
 (                                    # subshell: the EXIT trap fires when this block ends
 set -euo pipefail                    # stop at the first failing step
-TAG=vX.Y.Z; VER=${TAG#v}
-[[ $TAG =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]  # plain vX.Y.Z, no suffix
-COMMIT=$(git rev-parse --verify "refs/tags/$TAG^{commit}")  # must be a tag, not a branch
-GITHUB_COMMIT=$(gh api "repos/eastgenomics/eggd_purple_plotter/commits/refs/tags/$TAG" --jq .sha)
-test "$GITHUB_COMMIT" = "$COMMIT"    # the local tag is the one on GitHub (what release.yml audits)
+BRANCH=release-branch                # the release branch
+COMMIT=$(git rev-parse --verify "origin/$BRANCH^{commit}")  # its reviewed head
 REPO=$(pwd)
-WT=$(mktemp -d)                      # fresh worktree each attempt, removed when the block ends
+WT=$(mktemp -d)                      # clean checkout, removed when the block ends
 trap 'cd "$REPO"; git worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"' EXIT
 git worktree add --detach "$WT" "$COMMIT"
 cd "$WT"
 MANIFEST_NAME=$(jq -er .name dxapp.json)
-test "$MANIFEST_NAME" = eggd_purple_plotter  # the app the checks below query
-# Run CI (tests, lint, security scans including the Trivy SBOM scan) on the tag now and require
-# that run to pass: an older pass can predate new advisories or expired exceptions
-GH_REPO=eastgenomics/eggd_purple_plotter
-START=$(date -u +%s)
-gh workflow run CI --repo "$GH_REPO" --ref "$TAG"
-RUN=
-for _ in $(seq 30); do               # the new run can take a few seconds to appear
-  sleep 10
-  RUN=$(gh run list --repo "$GH_REPO" --workflow CI --event workflow_dispatch --commit "$COMMIT" \
-    --json databaseId,createdAt \
-    --jq "[.[] | select((.createdAt | fromdateiso8601) >= $START)][0].databaseId // empty")
-  [ -n "$RUN" ] && break
-done
-test -n "$RUN"
-gh run watch "$RUN" --repo "$GH_REPO" --exit-status  # non-zero if any job failed
-MANIFEST_VER=$(jq -er .version dxapp.json)
-RELEASE_PROP=$(jq -er .properties.githubRelease dxapp.json)
-test "$MANIFEST_VER" = "$VER"        # manifest matches the tag
-test "$RELEASE_PROP" = "$VER"
+test "$MANIFEST_NAME" = eggd_purple_plotter
+VER=$(jq -er .version dxapp.json)
+[[ $VER =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]  # plain X.Y.Z, no suffix
 LIVE_USERS=$(dx api app-eggd_purple_plotter listAuthorizedUsers | jq -ec '.authorizedUsers | sort')
 LIVE_DEVS=$(dx api app-eggd_purple_plotter listDevelopers | jq -ec '.developers | sort')
 MANIFEST_USERS=$(jq -ec '.authorizedUsers | sort' dxapp.json)
 MANIFEST_DEVS=$(jq -ec '.developers | sort' dxapp.json)
 test "$LIVE_USERS" = "$MANIFEST_USERS"
 test "$LIVE_DEVS" = "$MANIFEST_DEVS"
-APP=$(dx build --app --no-update --no-version-autonumbering --yes | jq -er .id)  # add --bill-to <org> if needed;
+# --no-version-autonumbering: never create X.Y.Z+build.<timestamp>; --yes: non-interactive
+APP=$(dx build --app --no-version-autonumbering --yes | jq -er .id)  # add --bill-to <org> if needed;
                                      # logs go to stderr, stdout is {"id": "app-…"}
 APP_VER=$(dx describe "$APP" --json | jq -er .version)
-test "$APP_VER" = "$VER"             # exactly X.Y.Z, no suffix
-dx publish "$APP"                    # makes it available to authorizedUsers
-echo "published $APP ($APP_VER)"
+test "$APP_VER" = "$VER"
+echo "built $APP ($APP_VER) from $COMMIT"   # record both in the testing document
 )
 ```
+
+Before SIGNOFF, run CI on the release branch (`gh workflow run CI --ref <release-branch>`),
+check the run's commit is the one recorded (`gh run view <run> --json headSha`), and link in
+the testing document the jobs run with that app ID and that CI run. Its
+`release-evidence-<commit>` artefact holds the SBOM (`sbom.json`) and the hashed lists of what
+ships; its security job shows the pip-audit and Trivy results. (CI on a pull request runs on
+the PR's merge commit, not the branch head, so it is not the evidence for the build.)
+
+**2. Publish (after the Approver moves the story to DEPLOY TO PROD).** Tag the commit recorded
+in the testing document, publish the GitHub release (`release.yml` then attaches the SBOM and
+hashed lists to it), publish the tested app, and merge the release branch into `main`.
+
+```bash
+(
+set -euo pipefail
+APP=app-xxxx; COMMIT=0123abc            # both from the testing document
+VER=$(git show "$COMMIT:dxapp.json" | jq -er .version)
+INFO=$(dx describe "$APP" --json)
+test "$(jq -er .name <<<"$INFO")" = eggd_purple_plotter
+test "$(jq -er .version <<<"$INFO")" = "$VER"
+test "$(jq -r '.published // empty' <<<"$INFO")" = ""      # still unpublished
+git tag "v$VER" "$COMMIT" && git push origin "v$VER"        # tag the tested commit
+gh release create "v$VER" --verify-tag --title "v$VER" --notes-file release-notes.md
+dx publish "$APP"                                            # the app that was tested
+)
+```
+
+If the code changes after the testing document records an app ID, rebuild (step 1), re-test,
+and update the document before SIGNOFF. `v*` tags are protected from updates and deletion by a
+repository ruleset, so a tag keeps pointing at the commit that was signed off.
 
 Then run it as before: `dx run app-eggd_purple_plotter` with the same `-i` arguments as the
 applet example above.
@@ -318,7 +336,7 @@ and injection risks this release removes.
 .venv/bin/python3 resources/home/dnanexus/purple_plotter/purple_plotter.py --print-script-hashes
 ```
 
-prints the two `sha256-…` values. For the code tagged v1.1.0 and v1.1.1, i.e. the v1.1.1 app (v1.1.1 changes neither script). Viewers made by pre-release builds may differ; check their hashes before serving them:
+prints the two `sha256-…` values. The table gives them for the code tagged v1.1.0 and for v1.1.1, which changes neither script. Viewers made by other builds may differ, so check their hashes before serving them:
 
 | Script | Hash |
 |---|---|
@@ -381,7 +399,8 @@ python3 -c "import json; json.load(open('dxapp.json')); print('valid')"
 
 ### CI
 
-`.github/workflows/pytest.yml` runs three jobs on every pull request and on pushes to `main`:
+`.github/workflows/pytest.yml` runs three jobs on every pull request, on pushes to `main`,
+and when dispatched by hand (for the release evidence above):
 
 - **test**: `pytest tests/ -v` against the bundled wheels (checked with
   `scripts/release_manifest.py check-installed`), with the runner's preinstalled Chrome for
@@ -392,7 +411,8 @@ python3 -c "import json; json.load(open('dxapp.json')); print('valid')"
 - **security**: bandit (fails on HIGH only; Ruff's `S` rules, a subset of bandit's checks, run at
   every severity in the lint job), `pip-audit -r requirements.txt`, and pip-audit on what the
   app ships: the bundled wheels and the asset's Python packages (lists from
-  `scripts/release_manifest.py`, below).
+  `scripts/release_manifest.py`, below), and the Trivy scan of the SBOM. It uploads the SBOM
+  and both lists as the `release-evidence-<commit>` artefact.
 
 `scheduled-scan.yml` also runs the same pip-audit scans, a Trivy scan of the SBOM described below, and Trivy (dependencies, misconfiguration and secrets,
 failing on HIGH or CRITICAL) every Monday. GitHub disables a scheduled workflow after 60 days
@@ -422,10 +442,9 @@ What is checked for known vulnerabilities: the bundled wheels and the asset's Py
 packages in the SBOM). Chromium and Node.js are listed with versions but are not matched
 against a vulnerability database; they change only when the asset's Playwright pin changes.
 
-The release workflow runs after the GitHub release is published, as in the template repo. The
-same audits, including the Trivy scan of the SBOM, run in CI on every pull request and push
-to `main`, and the DNAnexus release procedure above runs CI again on the tag and requires that
-run to pass before building.
+The release workflow runs after the GitHub release is published, which is after sign-off, as
+in the template repo. The evidence the Approver signs off on comes earlier: the CI run on the
+release branch at the tested commit, which runs the same audits and produces the same SBOM.
 
 To run the lint job locally:
 

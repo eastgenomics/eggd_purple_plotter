@@ -222,21 +222,42 @@ echo "built $APP ($APP_VER) from $COMMIT"   # record both in the testing documen
 )
 ```
 
-Before SIGNOFF, run CI on the release branch (`gh workflow run CI --ref <release-branch>`),
-check the run's commit is the one recorded (`gh run view <run> --json headSha`), and link in
-the testing document the jobs run with that app ID and that CI run. Its
+Before SIGNOFF, run CI on the release branch and require it to pass on the recorded commit:
+
+```bash
+gh workflow run CI --ref <release-branch>
+gh run list --workflow CI --event workflow_dispatch --branch <release-branch> --limit 1 \
+  --json databaseId,headSha                      # headSha must be the recorded commit
+gh run watch <run-id> --exit-status              # non-zero if any job failed: do not sign off
+```
+
+Link in the testing document the jobs run with that app ID and that CI run. Its
 `release-evidence-<commit>` artefact holds the SBOM (`sbom.json`) and the hashed lists of what
 ships; its security job shows the pip-audit and Trivy results. (CI on a pull request runs on
 the PR's merge commit, not the branch head, so it is not the evidence for the build.)
 
-**2. Publish (after the Approver moves the story to DEPLOY TO PROD).** Tag the commit recorded
-in the testing document, publish the GitHub release (`release.yml` then attaches the SBOM and
-hashed lists to it), publish the tested app, and merge the release branch into `main`.
+If the code changes after the testing document records an app ID, rebuild (step 1), re-test,
+and update the document before SIGNOFF.
+
+**2. Publish (after the Approver moves the story to DEPLOY TO PROD).** Prerequisite: the
+repository ruleset that blocks updates to and deletion of `v*` tags is active, so a tag keeps
+pointing at the commit that was signed off. Then:
+
+1. Merge the release branch's pull request into `main` with a **merge commit** (not squash or
+   rebase), so the tested commit stays in `main`'s history and `release.yml` is on the default
+   branch.
+2. Write the release notes (what changed since the last release) to `release-notes.md`.
+3. Run the block below. It checks the app is the tested, unpublished one, tags the tested
+   commit, publishes the GitHub release (`release.yml` then attaches the SBOM and hashed
+   lists), and publishes the app.
 
 ```bash
 (
 set -euo pipefail
 APP=app-xxxx; COMMIT=0123abc            # both from the testing document
+test -s release-notes.md                # notes written before anything is tagged
+git fetch origin main
+git merge-base --is-ancestor "$COMMIT" origin/main         # tested commit is in main
 VER=$(git show "$COMMIT:dxapp.json" | jq -er .version)
 INFO=$(dx describe "$APP" --json)
 test "$(jq -er .name <<<"$INFO")" = eggd_purple_plotter
@@ -247,10 +268,6 @@ gh release create "v$VER" --verify-tag --title "v$VER" --notes-file release-note
 dx publish "$APP"                                            # the app that was tested
 )
 ```
-
-If the code changes after the testing document records an app ID, rebuild (step 1), re-test,
-and update the document before SIGNOFF. `v*` tags are protected from updates and deletion by a
-repository ruleset, so a tag keeps pointing at the commit that was signed off.
 
 Then run it as before: `dx run app-eggd_purple_plotter` with the same `-i` arguments as the
 applet example above.

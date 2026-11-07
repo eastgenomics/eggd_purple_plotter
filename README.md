@@ -210,15 +210,17 @@ the document before SIGNOFF. Do not build again after sign-off.
 The repository ruleset that blocks updates to and deletion of `v*` tags must be active, so a
 tag keeps pointing at the commit that was signed off.
 
-1. Merge the release branch's pull request into `main` with a **merge commit** (not squash or
-   rebase), so the tested commit stays in `main`'s history and `release.yml` is on the default
-   branch.
+1. Check the release branch's head is still the tested commit (if it has moved, stop: the
+   change needs building, testing and sign-off again). Then merge the branch's pull request into
+   `main` with a **merge commit** (not squash or rebase), so the tested commit stays in `main`'s
+   history and `release.yml` is on the default branch.
 2. Check the app is still the one in the testing document: same ID and version, the same
    `modified` time, and not yet published.
 3. Tag the tested commit `vX.Y.Z` and push the tag. If the tag already exists, check it points
    at the tested commit before going on.
-4. Publish the GitHub release for that tag with notes on what changed. `release.yml` then
-   attaches the SBOM and hashed lists to it.
+4. Publish the GitHub release for that tag with notes on what changed. Wait for `release.yml`
+   to pass and check the SBOM and hashed lists are attached to the release. If it fails, find
+   out why before going on.
 5. Publish the tested app: `dx publish eggd_purple_plotter/X.Y.Z`.
 
 Then run it as before: `dx run app-eggd_purple_plotter` with the same `-i` arguments as the

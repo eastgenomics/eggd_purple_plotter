@@ -16,8 +16,8 @@ def test_version_and_github_release_agree():
 
 
 def test_version_is_plain_semver():
-    # A suffix in the manifest would be released as such; a suffix dx build adds on its own
-    # is caught by the release procedure in README.
+    # A suffix in the manifest would be released as such. dx build adds none when run with
+    # --no-version-autonumbering (README "Release").
     assert PLAIN_VERSION.fullmatch(json.loads(DXAPP.read_text())["version"])
 
 

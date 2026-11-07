@@ -174,100 +174,52 @@ dx run applet-xxxx \
     --priority high --watch
 ```
 
-### Release (Bioinformatics Development Manual v3)
+### Release
 
-A release is the **app** object (an applet is for development only). It follows the team's
-sign-off workflow: the app is built and tested during DEVELOPMENT, and the app that was tested
-and signed off is the one published. Nothing is rebuilt at release.
+Releases follow the team's sign-off workflow in the
+[Bioinformatics Development Manual v3](https://cuhbioinformatics.atlassian.net/wiki/spaces/DV/pages/4678320129).
+A release is the **app** object (an applet is for development only), and the app that is
+published is the one that was tested and signed off. Nothing is rebuilt at release.
 
-**1. Build the app for testing (DEVELOPMENT).** Build from a clean checkout of the reviewed
-commit on the release branch. While the version is unpublished, `dx build --app` rebuilds over
-it in place; rebuild whenever the code changes, and re-run the tests on the result. Record the
-app ID and commit from the last build in the Confluence testing document.
+**During development (DEVELOPMENT)**
 
-```bash
-# dx build applies dxapp.json's authorizedUsers and developers to the whole app, including
-# published versions, so the checks below stop the build if they differ from the app's.
-# Change them deliberately first, for example:
-#   dx remove developers app-eggd_purple_plotter user-<name>
-#   dx add developers    app-eggd_purple_plotter org-<name>
-#   dx add users app-eggd_purple_plotter <user-or-org>
-#   dx remove users app-eggd_purple_plotter <user-or-org>
+1. Before the first build, make sure the app's authorised users and developers on DNAnexus are
+   only `org-emee_1`, as in `dxapp.json` (`dx api app-eggd_purple_plotter listDevelopers` and
+   `listAuthorizedUsers`; change them with `dx add|remove developers|users`). `dx build`
+   applies the manifest's lists to the whole app, including published versions.
+2. Build from a clean checkout of the reviewed commit on the release branch:
+   `dx build --app --no-version-autonumbering --yes` (add `--bill-to <org>` if needed). While the
+   version is unpublished, later builds update it in place; rebuild whenever the code changes,
+   and re-run the tests. `--no-version-autonumbering` stops `dx build` creating an
+   `X.Y.Z+build.<timestamp>` version.
+3. Check the built app's version is exactly the `dxapp.json` version (`dx describe <app-id>`),
+   and record in the Confluence testing document the app ID, the commit it was built from, and
+   the app's `modified` time.
+4. Run the validation jobs with that app ID.
+5. Run CI on the release branch (`gh workflow run CI --ref <release-branch>`). Check the new
+   run's commit is the recorded one and that it passed. Link it in the testing document: its
+   `release-evidence-<commit>` artefact holds the SBOM (`sbom.json`) and the hashed lists of
+   what ships, and its security job shows the pip-audit and Trivy results. (CI on a pull
+   request runs on the PR's merge commit, so it is not the evidence for the build.)
 
-(                                    # subshell: the EXIT trap fires when this block ends
-set -euo pipefail                    # stop at the first failing step
-BRANCH=release-branch                # the release branch
-COMMIT=$(git rev-parse --verify "origin/$BRANCH^{commit}")  # its reviewed head
-REPO=$(pwd)
-WT=$(mktemp -d)                      # clean checkout, removed when the block ends
-trap 'cd "$REPO"; git worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"' EXIT
-git worktree add --detach "$WT" "$COMMIT"
-cd "$WT"
-MANIFEST_NAME=$(jq -er .name dxapp.json)
-test "$MANIFEST_NAME" = eggd_purple_plotter
-VER=$(jq -er .version dxapp.json)
-[[ $VER =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]  # plain X.Y.Z, no suffix
-LIVE_USERS=$(dx api app-eggd_purple_plotter listAuthorizedUsers | jq -ec '.authorizedUsers | sort')
-LIVE_DEVS=$(dx api app-eggd_purple_plotter listDevelopers | jq -ec '.developers | sort')
-MANIFEST_USERS=$(jq -ec '.authorizedUsers | sort' dxapp.json)
-MANIFEST_DEVS=$(jq -ec '.developers | sort' dxapp.json)
-test "$LIVE_USERS" = "$MANIFEST_USERS"
-test "$LIVE_DEVS" = "$MANIFEST_DEVS"
-# --no-version-autonumbering: never create X.Y.Z+build.<timestamp>; --yes: non-interactive
-APP=$(dx build --app --no-version-autonumbering --yes | jq -er .id)  # add --bill-to <org> if needed;
-                                     # logs go to stderr, stdout is {"id": "app-…"}
-APP_VER=$(dx describe "$APP" --json | jq -er .version)
-test "$APP_VER" = "$VER"
-echo "built $APP ($APP_VER) from $COMMIT"   # record both in the testing document
-)
-```
+If the code changes after the testing document records an app ID, rebuild, re-test and update
+the document before SIGNOFF. Do not build again after sign-off.
 
-Before SIGNOFF, run CI on the release branch and require it to pass on the recorded commit:
+**After the Approver moves the story to DEPLOY TO PROD**
 
-```bash
-gh workflow run CI --ref <release-branch>
-gh run list --workflow CI --event workflow_dispatch --branch <release-branch> --limit 1 \
-  --json databaseId,headSha                      # headSha must be the recorded commit
-gh run watch <run-id> --exit-status              # non-zero if any job failed: do not sign off
-```
-
-Link in the testing document the jobs run with that app ID and that CI run. Its
-`release-evidence-<commit>` artefact holds the SBOM (`sbom.json`) and the hashed lists of what
-ships; its security job shows the pip-audit and Trivy results. (CI on a pull request runs on
-the PR's merge commit, not the branch head, so it is not the evidence for the build.)
-
-If the code changes after the testing document records an app ID, rebuild (step 1), re-test,
-and update the document before SIGNOFF.
-
-**2. Publish (after the Approver moves the story to DEPLOY TO PROD).** Prerequisite: the
-repository ruleset that blocks updates to and deletion of `v*` tags is active, so a tag keeps
-pointing at the commit that was signed off. Then:
+The repository ruleset that blocks updates to and deletion of `v*` tags must be active, so a
+tag keeps pointing at the commit that was signed off.
 
 1. Merge the release branch's pull request into `main` with a **merge commit** (not squash or
    rebase), so the tested commit stays in `main`'s history and `release.yml` is on the default
    branch.
-2. Write the release notes (what changed since the last release) to `release-notes.md`.
-3. Run the block below. It checks the app is the tested, unpublished one, tags the tested
-   commit, publishes the GitHub release (`release.yml` then attaches the SBOM and hashed
-   lists), and publishes the app.
-
-```bash
-(
-set -euo pipefail
-APP=app-xxxx; COMMIT=0123abc            # both from the testing document
-test -s release-notes.md                # notes written before anything is tagged
-git fetch origin main
-git merge-base --is-ancestor "$COMMIT" origin/main         # tested commit is in main
-VER=$(git show "$COMMIT:dxapp.json" | jq -er .version)
-INFO=$(dx describe "$APP" --json)
-test "$(jq -er .name <<<"$INFO")" = eggd_purple_plotter
-test "$(jq -er .version <<<"$INFO")" = "$VER"
-test "$(jq -r '.published // empty' <<<"$INFO")" = ""      # still unpublished
-git tag "v$VER" "$COMMIT" && git push origin "v$VER"        # tag the tested commit
-gh release create "v$VER" --verify-tag --title "v$VER" --notes-file release-notes.md
-dx publish "$APP"                                            # the app that was tested
-)
-```
+2. Check the app is still the one in the testing document: same ID and version, the same
+   `modified` time, and not yet published.
+3. Tag the tested commit `vX.Y.Z` and push the tag. If the tag already exists, check it points
+   at the tested commit before going on.
+4. Publish the GitHub release for that tag with notes on what changed. `release.yml` then
+   attaches the SBOM and hashed lists to it.
+5. Publish the tested app: `dx publish eggd_purple_plotter/X.Y.Z`.
 
 Then run it as before: `dx run app-eggd_purple_plotter` with the same `-i` arguments as the
 applet example above.

@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions: {}  # each job asks for what it needs
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-artefacts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write  # gh release upload attaches the artefacts to the release
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
+        with:
+          python-version: "3.12"
+      - name: Release tag matches dxapp.json
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          MANIFEST_VER=$(jq -er .version dxapp.json)
+          test "v$MANIFEST_VER" = "$RELEASE_TAG"
+      - name: Install the wheels the app ships, then pinned test and release tools
+        run: |
+          pip install --no-index --no-deps resources/home/dnanexus/packages/*
+          pip install pytest==9.0.3 playwright==1.64.1 pip-audit==2.10.1 cyclonedx-bom==7.3.0
+          python3 scripts/release_manifest.py check-installed   # tools did not replace them
+      - name: Require a browser (otherwise the image-export tests would silently skip)
+        run: command -v google-chrome || command -v chromium || command -v chromium-browser
+      - name: Run tests
+        run: pytest tests/ -v
+      # Each list is written and audited in its own step, so one failing does not stop the other
+      - name: List the bundled wheels with hashes and audit them (CVE scan — release gate; CAF A4.a)
+        run: |
+          python3 scripts/release_manifest.py requirements > requirements-hashed.txt
+          cat requirements-hashed.txt
+          pip-audit -r requirements-hashed.txt --disable-pip --require-hashes
+      - name: List the asset's Python packages and audit them (CVE scan — release gate)
+        if: ${{ !cancelled() }}
+        run: |
+          python3 scripts/release_manifest.py asset-requirements > asset-requirements.txt
+          cat asset-requirements.txt
+          pip-audit -r asset-requirements.txt --disable-pip --no-deps
+      - name: Generate SBOM in CycloneDX format (CAF A4.a)
+        run: |
+          cyclonedx-py requirements requirements-hashed.txt --output-format JSON -o sbom.json
+          python3 scripts/release_manifest.py extend-sbom sbom.json
+      - name: Validate the SBOM against the CycloneDX 1.6 schema
+        shell: python
+        run: |
+          from cyclonedx.schema import SchemaVersion
+          from cyclonedx.validation.json import JsonStrictValidator
+          error = JsonStrictValidator(SchemaVersion.V1_6).validate_str(open("sbom.json").read())
+          if error is not None:
+              raise SystemExit(f"sbom.json is not valid CycloneDX 1.6: {error}")
+      - name: Install Trivy 0.70.0 (pinned, checksum-verified)
+        env:
+          TRIVY_VERSION: 0.70.0
+          TRIVY_SHA256: 8b4376d5d6befe5c24d503f10ff136d9e0c49f9127a4279fd110b727929a5aa9
+        run: |
+          cd "$RUNNER_TEMP"                # keep the download out of the scanned checkout
+          TARBALL="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl -fsSLO --connect-timeout 30 --max-time 300 \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${TARBALL}"
+          echo "${TRIVY_SHA256}  ${TARBALL}" | sha256sum -c -
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "$TARBALL" -C "$HOME/.local/bin" trivy
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/trivy" --version
+      - name: Scan the SBOM with Trivy (npm and PyPI components; release gate)
+        # .trivyignore.yaml holds time-limited, governance-recorded exceptions (see its comments)
+        run: trivy sbom --severity HIGH,CRITICAL --exit-code 1 --ignorefile .trivyignore.yaml sbom.json
+      - name: Upload release artefacts (retained 90 days)
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b  # v4.5.0
+        with:
+          name: release-artefacts-${{ github.sha }}
+          path: |
+            requirements-hashed.txt
+            asset-requirements.txt
+            sbom.json
+          retention-days: 90
+      - name: Attach artefacts to GitHub Release (5-year retention — CAF A4.a)
+        run: gh release upload --clobber "$RELEASE_TAG" requirements-hashed.txt asset-requirements.txt sbom.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}

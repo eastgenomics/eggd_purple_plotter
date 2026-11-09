@@ -4,27 +4,35 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:   # run on the release branch for sign-off evidence (README "Release")
 
 permissions:
   contents: read
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           persist-credentials: false
       - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
         with: { python-version: "3.12" }
+      # Test against the wheels the app ships, not whatever pandas PyPI resolves today.
       # playwright drives the runner's preinstalled Chrome (no browser download) for the image-export tests
-      - run: pip install pandas pytest playwright==1.64.1
+      - name: Install the bundled wheels, then pytest and playwright
+        run: |
+          pip install --no-index --no-deps resources/home/dnanexus/packages/*
+          pip install pytest==9.0.3 playwright==1.64.1
+          python3 scripts/release_manifest.py check-installed   # tools did not replace them
       - name: Require a browser (otherwise the image-export tests would silently skip)
         run: command -v google-chrome || command -v chromium || command -v chromium-browser
       - run: pytest tests/ -v
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
@@ -34,7 +42,7 @@ jobs:
       - name: Install lint tools
         run: pip install ruff==0.17.3 zizmor==1.31.1 shellcheck-py==0.11.0.1
       - name: Ruff (pyflakes, bugbear, Ruff's bandit-derived S rules, blind except; config in pyproject.toml)
-        run: ruff check resources tests
+        run: ruff check resources tests scripts
       - name: zizmor (GitHub Actions workflow security; --strict-collection fails on a malformed workflow)
         run: zizmor --offline --strict-collection .github/workflows/
       - name: ShellCheck (pinned via shellcheck-py, not the runner's copy)
@@ -43,7 +51,8 @@ jobs:
           shellcheck src/code.sh infra/*.sh resources/usr/bin/mark-section resources/usr/bin/mark-success
 
   security:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: read
       security-events: write
@@ -57,14 +66,58 @@ jobs:
         run: pip install bandit==1.9.4 bandit-sarif-formatter==1.1.1 pip-audit==2.10.1
       - name: Run bandit (SAST) — fail on HIGH severity findings
         run: |
-          bandit -r resources/home/dnanexus/purple_plotter/ tests/ \
+          bandit -r resources/home/dnanexus/purple_plotter/ tests/ scripts/ \
             -lll -f sarif -o bandit.sarif
       - name: Upload bandit SARIF to Security tab
         if: always()
-        continue-on-error: true  # SARIF upload requires GitHub Advanced Security
         uses: github/codeql-action/upload-sarif@17a820bf2e43b47be2c72b39cc905417bc1ab6d0  # v3.28.6
         with:
           sarif_file: bandit.sarif
       - name: Run pip-audit (CVE scan) — fail on any finding
         if: always()
         run: pip-audit -r requirements.txt
+      - name: Run pip-audit on the bundled wheels the app ships
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/evidence"
+          python3 scripts/release_manifest.py requirements > "$RUNNER_TEMP/evidence/requirements-hashed.txt"
+          pip-audit -r "$RUNNER_TEMP/evidence/requirements-hashed.txt" --disable-pip --require-hashes
+      - name: Run pip-audit on the asset's Python packages
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/evidence"
+          python3 scripts/release_manifest.py asset-requirements > "$RUNNER_TEMP/evidence/asset-requirements.txt"
+          pip-audit -r "$RUNNER_TEMP/evidence/asset-requirements.txt" --disable-pip --no-deps
+      - name: Install Trivy 0.70.0 (pinned, checksum-verified)
+        if: always()
+        env:
+          TRIVY_VERSION: 0.70.0
+          TRIVY_SHA256: 8b4376d5d6befe5c24d503f10ff136d9e0c49f9127a4279fd110b727929a5aa9
+        run: |
+          cd "$RUNNER_TEMP"
+          TARBALL="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl -fsSLO --connect-timeout 30 --max-time 300 \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${TARBALL}"
+          echo "${TRIVY_SHA256}  ${TARBALL}" | sha256sum -c -
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "$TARBALL" -C "$HOME/.local/bin" trivy
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Scan the SBOM of what the app ships with Trivy (same check as the release gate)
+        if: always()
+        run: |
+          pip install cyclonedx-bom==7.3.0 playwright==1.64.1
+          mkdir -p "$RUNNER_TEMP/evidence"
+          python3 scripts/release_manifest.py requirements > "$RUNNER_TEMP/sbom-requirements.txt"
+          cyclonedx-py requirements "$RUNNER_TEMP/sbom-requirements.txt" --output-format JSON -o "$RUNNER_TEMP/evidence/sbom.json"
+          python3 scripts/release_manifest.py extend-sbom "$RUNNER_TEMP/evidence/sbom.json"
+          trivy sbom --severity HIGH,CRITICAL --exit-code 1 --ignorefile .trivyignore.yaml "$RUNNER_TEMP/evidence/sbom.json"
+      # Sign-off evidence: the SBOM and hashed lists for the commit CI ran on. For a release,
+      # dispatch CI on the release branch so this is the branch head, not a PR merge commit.
+      - name: Upload release evidence (retained 90 days)
+        if: always()
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b  # v4.5.0
+        with:
+          name: release-evidence-${{ github.sha }}
+          path: ${{ runner.temp }}/evidence/
+          if-no-files-found: error
+          retention-days: 90

@@ -1,0 +1,17 @@
+# Trivy exceptions. Each entry needs a governance record and an expiry; when it expires the
+# release and weekly scans fail again. Format: https://trivy.dev/latest/docs/configuration/filtering/
+vulnerabilities:
+  # DOMPurify 3.4.11 bundled inside igv.js 3.8.3 (assets/igv.min.js). Not exploitable here: igv.js
+  # calls DOMPurify.sanitize() with default options only (no SAFE_FOR_TEMPLATES, IN_PLACE or hooks)
+  # and the viewer's CSP blocks inline script. No igv.js release has the fix yet
+  # (igvteam/igv.js#2119). Decision: GOVR-14 (H-PURPLE-001). Upgrade: #14.
+  - id: GHSA-cg2g-xh64-v4q7
+    purls:
+      - pkg:npm/dompurify@3.4.11
+    statement: "Risk-accepted, GOVR-14: igv.js uses default DOMPurify options only; upgrade tracked in eggd_purple_plotter#14"
+    expired_at: 2027-02-04
+  - id: GHSA-mrv2-3pqr-j5jr
+    purls:
+      - pkg:npm/dompurify@3.4.11
+    statement: "Risk-accepted, GOVR-14: igv.js uses no IN_PLACE mode or hooks; upgrade tracked in eggd_purple_plotter#14"
+    expired_at: 2027-02-04

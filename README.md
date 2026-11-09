@@ -174,14 +174,57 @@ dx run applet-xxxx \
     --priority high --watch
 ```
 
-For a release, build and publish the actual **app** object instead — an applet
-build is dev-only and is not what end users run:
+### Release
 
-```bash
-dx build --app                       # -> app-xxxx
-dx publish app-xxxx                  # makes it available to authorizedUsers
-dx run app-eggd_purple_plotter ...    # same -i args as above
-```
+Releases follow the team's sign-off workflow in the
+[Bioinformatics Development Manual v3](https://cuhbioinformatics.atlassian.net/wiki/spaces/DV/pages/4678320129).
+A release is the **app** object (an applet is for development only), and the app that is
+published is the one that was tested and signed off. Nothing is rebuilt at release.
+
+**During development (DEVELOPMENT)**
+
+1. Before the first build, make sure the app's authorised users and developers on DNAnexus are
+   only `org-emee_1`, as in `dxapp.json` (`dx api app-eggd_purple_plotter listDevelopers` and
+   `listAuthorizedUsers`; change them with `dx add|remove developers|users`). `dx build`
+   applies the manifest's lists to the whole app, including published versions.
+2. Build from a clean checkout of the reviewed commit on the release branch:
+   `dx build --app --no-version-autonumbering --yes` (add `--bill-to <org>` if needed). While the
+   version is unpublished, later builds update it in place; rebuild whenever the code changes,
+   and re-run the tests. `--no-version-autonumbering` stops `dx build` creating an
+   `X.Y.Z+build.<timestamp>` version.
+3. Check the built app's version is exactly the `dxapp.json` version (`dx describe <app-id>`),
+   and record in the Confluence testing document the app ID, the commit it was built from, and
+   the app's `modified` time.
+4. Run the validation jobs with that app ID.
+5. Run CI on the release branch (`gh workflow run CI --ref <release-branch>`). Check the new
+   run's commit is the recorded one and that it passed. Link it in the testing document: its
+   `release-evidence-<commit>` artefact holds the SBOM (`sbom.json`) and the hashed lists of
+   what ships, and its security job shows the pip-audit and Trivy results. (CI on a pull
+   request runs on the PR's merge commit, so it is not the evidence for the build.)
+
+If the code changes after the testing document records an app ID, rebuild, re-test and update
+the document before SIGNOFF. Do not build again after sign-off.
+
+**After the Approver moves the story to DEPLOY TO PROD**
+
+The repository ruleset that blocks updates to and deletion of `v*` tags must be active, so a
+tag keeps pointing at the commit that was signed off.
+
+1. Check the release branch's head is still the tested commit (if it has moved, stop: the
+   change needs building, testing and sign-off again). Then merge the branch's pull request into
+   `main` with a **merge commit** (not squash or rebase), so the tested commit stays in `main`'s
+   history and `release.yml` is on the default branch.
+2. Check the app is still the one in the testing document: same ID and version, the same
+   `modified` time, and not yet published.
+3. Tag the tested commit `vX.Y.Z` and push the tag. If the tag already exists, check it points
+   at the tested commit before going on.
+4. Publish the GitHub release for that tag with notes on what changed. Wait for `release.yml`
+   to pass and check the SBOM and hashed lists are attached to the release. If it fails, find
+   out why before going on.
+5. Publish the tested app: `dx publish eggd_purple_plotter/X.Y.Z`.
+
+Then run it as before: `dx run app-eggd_purple_plotter` with the same `-i` arguments as the
+applet example above.
 
 ---
 
@@ -253,7 +296,7 @@ serves the viewers should add the same policy as a response header, with
 hashes of **every plotter release whose viewers the site serves** (each release's `viewer.js`
 has its own hash; list them all while that release's viewers are still served). Viewers from
 v1.0.0 cannot meet such a policy at all: they load igv.js from the igv.org CDN and their inline
-script contains the sample's data, so it differs per file. Regenerate them with v1.1.0 or later
+script contains the sample's data, so it differs per file. Regenerate them with the v1.1.1 app or later
 before the header is applied. The alternative, a separate legacy policy that
 allows the CDN and `'unsafe-inline'` (or a hash per viewer), brings back the third-party code
 and injection risks this release removes.
@@ -264,7 +307,7 @@ and injection risks this release removes.
 .venv/bin/python3 resources/home/dnanexus/purple_plotter/purple_plotter.py --print-script-hashes
 ```
 
-prints the two `sha256-…` values. For v1.1.0:
+prints the two `sha256-…` values. The table gives them for the code tagged v1.1.0 and for v1.1.1, which changes neither script. Viewers made by other builds may differ, so check their hashes before serving them:
 
 | Script | Hash |
 |---|---|
@@ -327,20 +370,57 @@ python3 -c "import json; json.load(open('dxapp.json')); print('valid')"
 
 ### CI
 
-`.github/workflows/pytest.yml` runs three jobs on every pull request and on pushes to `main`:
+`.github/workflows/pytest.yml` runs three jobs on every pull request, on pushes to `main`,
+and when dispatched by hand (for the release evidence above):
 
-- **test**: `pytest tests/ -v`, with the runner's preinstalled Chrome for the image-export tests.
-- **lint**: Ruff (`ruff check resources tests`; rules in `pyproject.toml`), zizmor
+- **test**: `pytest tests/ -v` against the bundled wheels (checked with
+  `scripts/release_manifest.py check-installed`), with the runner's preinstalled Chrome for
+  the image-export tests.
+- **lint**: Ruff (`ruff check resources tests scripts`; rules in `pyproject.toml`), zizmor
   (`zizmor --offline --strict-collection .github/workflows/`) and ShellCheck 0.11.0 (pinned via
   `shellcheck-py`) on `src/code.sh`, `infra/*.sh` and `resources/usr/bin/*`.
 - **security**: bandit (fails on HIGH only; Ruff's `S` rules, a subset of bandit's checks, run at
-  every severity in the lint job) and
-  `pip-audit -r requirements.txt`.
+  every severity in the lint job), `pip-audit -r requirements.txt`, and pip-audit on what the
+  app ships: the bundled wheels and the asset's Python packages (lists from
+  `scripts/release_manifest.py`, below), and the Trivy scan of the SBOM. It uploads the SBOM
+  and both lists as the `release-evidence-<commit>` artefact.
 
-`scheduled-scan.yml` also runs pip-audit and Trivy every Monday. To run the lint job locally:
+`scheduled-scan.yml` also runs the same pip-audit scans, a Trivy scan of the SBOM described below, and Trivy (dependencies, misconfiguration and secrets,
+failing on HIGH or CRITICAL) every Monday. GitHub disables a scheduled workflow after 60 days
+with no repository activity; re-enable it under Actions if that happens. It installs Trivy
+itself (pinned release, SHA-256 checked) because the action's installer currently fails.
+
+`release.yml` runs when a GitHub release is published. It checks that the tag is `v` plus the
+`dxapp.json` version, runs the tests against the bundled wheels, and audits and records what
+the app actually ships, which
+is not `requirements.txt`: the wheels bundled in `resources/home/dnanexus/packages/`, igv.js
+embedded in every viewer, and the `pp_headless_chromium` asset. `scripts/release_manifest.py`
+writes the artefacts, which are attached to the release (supply chain, CAF A4.a):
+
+| Artefact | Contents |
+|---|---|
+| `requirements-hashed.txt` | each bundled wheel as `name==version --hash=sha256:` of the shipped file; audited with pip-audit |
+| `asset-requirements.txt` | the Python packages the asset installs (`PINS` in `asset/Makefile`); audited with pip-audit. Taken from the build source at the tagged commit, not read from the asset record |
+| `sbom.json` | CycloneDX SBOM: the app, the bundled wheels, igv.js (with its file hash and the libraries it names in licence banners: DOMPurify, vanilla-picker, pako, Canvas 2 Svg) and the asset (record ID, its Python packages, and the Chromium and Node.js versions their Playwright pins). It is marked incomplete: it has no dependency graph, and does not list igv.js's CRAM bundle, native libraries vendored inside wheels (such as NumPy's OpenBLAS), or the asset's Ubuntu libraries and venv pip (#13) |
+
+Accepted exceptions live in `.trivyignore.yaml`. Each entry names its governance record
+(GOVR hazard) and has an `expired_at` date; once it passes, the release and weekly scans fail
+again. Current entries: two DOMPurify advisories in the igv.js bundle, accepted until
+2027-02-04 (GOVR-14; upgrade in #14).
+
+What is checked for known vulnerabilities: the bundled wheels and the asset's Python packages
+(pip-audit, and Trivy through the SBOM), and the libraries igv.js bundles (Trivy, as npm
+packages in the SBOM). Chromium and Node.js are listed with versions but are not matched
+against a vulnerability database; they change only when the asset's Playwright pin changes.
+
+The release workflow runs after the GitHub release is published, which is after sign-off, as
+in the template repo. The evidence the Approver signs off on comes earlier: the CI run on the
+release branch at the tested commit, which runs the same audits and produces the same SBOM.
+
+To run the lint job locally:
 
 ```bash
-uvx ruff@0.17.3 check resources tests
+uvx ruff@0.17.3 check resources tests scripts
 uvx zizmor@1.31.1 --offline --strict-collection .github/workflows/
 uvx --from shellcheck-py==0.11.0.1 shellcheck src/code.sh infra/*.sh resources/usr/bin/mark-section resources/usr/bin/mark-success
 ```
@@ -371,10 +451,3 @@ v1.0.0: it predates the inlined igv.js, the JSON data block and the CSP (see [Se
 | Instance | `mem1_ssd1_v2_x2` |
 | igv.js | 3.8.3 (embedded) |
 | Genome build | hg38 |
-
-## Sharing outputs by URL
-
-Finished sample HTML outputs can optionally be published to a private S3 bucket fronted
-by CloudFront so they can be shared with others by URL, outside of DNAnexus. See
-[`DEPLOYMENT.md`](DEPLOYMENT.md) for the live URL, resource names, and how to publish a
-new sample.

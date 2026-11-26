@@ -88,6 +88,7 @@ jobs:
             asset-requirements.txt
             sbom.json
           retention-days: 90
+          overwrite: true
       - name: Attach artefacts to GitHub Release (5-year retention — CAF A4.a)
         run: gh release upload --clobber "$RELEASE_TAG" requirements-hashed.txt asset-requirements.txt sbom.json
         env:
